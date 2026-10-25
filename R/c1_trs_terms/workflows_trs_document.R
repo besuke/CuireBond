@@ -99,10 +99,10 @@ workflows_trs_document_c1 <- function(
   if (is.null(notifier)) notifier <- make_demo_notifier_c1(file.path(run_root, "notifications.jsonl"))
   result <- tryCatch({
     # 1. 取得（URLならダウンロード、ローカルなら複製）
-    step("1/5 PDFを取得しています：", source)
+    step("1/5 文書を取得しています：", source)
     tmp_intake <- file.path(run_root, paste0("_intake_", started))
     acquired <- acquire_trs_document_c1(source, tmp_intake)
-    step("    取得しました：", acquired$file_name, "（", acquired$pages, "ページ、SHA-256 ", substr(acquired$sha256, 1, 12), "…）")
+    step("    取得しました：", acquired$file_name, "（", dplyr::if_else(acquired$source_kind == "html", "HTMLをPDFへ変換、", ""), acquired$pages, "ページ、SHA-256 ", substr(acquired$sha256, 1, 12), "…）")
     document_id <- .document_id_c1(acquired$file_name)
     run_dir <- file.path(run_root, paste0(document_id, "_", started))
     dir.create(run_dir, recursive = TRUE, showWarnings = FALSE)
@@ -118,7 +118,7 @@ workflows_trs_document_c1 <- function(
     if (upload) {
       remote_pdf <- file.path(sharepoint$folder, "input", paste0(substr(acquired$sha256, 1, 12), "_", acquired$file_name))
       sp_item <- client$upload(acquired$stored_path, remote_pdf)
-      fetched <- client$download(remote_pdf, tempfile(fileext = ".pdf"))
+      fetched <- client$download(remote_pdf, tempfile(fileext = paste0(".", tools::file_ext(acquired$file_name))))
       if (pdf_sha256_c1(fetched) != acquired$sha256) stop("SharePoint から取得したPDFが配置したものと一致しません。", call. = FALSE)
     } else {
       sp_item <- tibble::tibble(remote_path = NA_character_, url = source, item_id = NA_character_,
@@ -136,7 +136,8 @@ workflows_trs_document_c1 <- function(
     agent_dirs <- c(claude = file.path(run_dir, "agents", "claude"), copilot = file.path(run_dir, "agents", "copilot"))
     purrr::iwalk(agent_dirs, \(d, a) prepare_agent_package_c1(a, document, sp_item, d, instruction_path))
     if (run_claude) step("3/5 Claude Code にPDFを読ませています（数分かかります。この間は表示が止まります）")
-    claude_run <- if (run_claude) run_claude_agent_c1(agent_dirs[["claude"]], source) else
+    # HTML由来は変換後のPDFだけを読ませる（ウェブ取得なし）
+    claude_run <- if (run_claude) run_claude_agent_c1(agent_dirs[["claude"]], if (acquired$source_kind == "pdf") source else acquired$stored_path) else
       tibble::tibble(agent = "claude", exit_status = NA_integer_, started_at = NA_character_, seconds = NA_real_,
                      cli_version = NA_character_)
     if (!is.null(copilot_dir)) {
@@ -182,6 +183,7 @@ workflows_trs_document_c1 <- function(
       status = status, document_id = document_id, source = source, pasted_source = pasted_source,
       run_dir = normalizePath(run_dir, winslash = "/"),
       input = list(file = acquired$file_name, sha256 = acquired$sha256, retrieved_at = acquired$retrieved_at,
+                   source_kind = acquired$source_kind, source_sha256 = acquired$source_sha256, pdf_path = document$stored_path,
                    method = acquired$method, sharepoint_url = sp_item$url, sharepoint_item_id = sp_item$item_id,
                    sharepoint_connection = sp_item$connection),
       agents = purrr::imap(collected, \(x, a) list(state = x$state)),

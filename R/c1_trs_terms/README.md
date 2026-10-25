@@ -94,3 +94,31 @@ R から呼ぶ場合：`workflows_trs_document_c1(source, sharepoint = sharepoin
 - Aladdin用JSONへの変換（仕様の提示後）
 - FpMLの公式XSDでの検証、ISDA定義の名称とFpMLのコード（contractualDefinitions等）の確認
 - 同じAIを複数回実行したときの揺れの測定、正解つき試験PDFでの正答率の測定
+
+## 現行の方式：Copilot の一次読解 → Claude の原文照合・FpML 作成（PowerShell）→ R の検証
+
+独立した二重読解ではない（Copilot の一次読解を Claude が原文で確かめる）。「2AI独立照合済み」とは表示しない。
+
+| 担当 | 処理 |
+|---|---|
+| PowerShell（`PS/`） | 委任認証、共有URLの資料の取得と版の記録、Copilot 一次読解、Claude 原文照合・FpML 作成、CSV・JSON・FpML の保存 |
+| R | 終了コード・成果物の受取、条件・根拠・版・FpML（XML構文／公式XSD／CSV との一致）の検証、tibble・Excel 表示 |
+
+```r
+source("scripts/run_c1_document.R", encoding = "UTF-8")   # 「配置済み資料の共有URLを貼ってください:」
+```
+
+- 資料は利用者が事前に SharePoint へ配置する。R・PowerShell はアップロードしない。両方の読解に同じ資料（同じ版。SHA-256・eTag で確認）を使う
+- モード：Copilot `api`（Chat API。beta／プレビュー）・`manual`（手動回答）・`demo`（モック）、Claude `api`・`demo`。黙って切り替えない
+- 接続確認（契約書の前に）：`pwsh -File R/c1_trs_terms/PS/test_connection.ps1`（サインイン → Copilot への短い質問）
+- 接続情報（環境変数。コード・Git に書かない）：`CURIE_M365_TENANT_ID`、`CURIE_M365_CLIENT_ID`
+- 必要なもの：Microsoft 365 Copilot アドオンライセンス、アプリ登録（公開クライアントフロー許可）、委任権限 7つ
+  （Sites.Read.All, Mail.Read, People.Read.All, OnlineMeetingTranscript.Read.All, Chat.Read, ChannelMessage.Read.All,
+  ExternalItem.Read.All。共有リンク形式のURLは Files.ReadWrite も）と管理者同意
+- 認証は Invoke-RestMethod によるデバイスコード方式（Microsoft.Graph.Authentication は Smart App Control に DLL を止められたため使わない）。トークンはメモリだけ
+- Claude が PDF を読むには poppler（pdftoppm）が必要（winget の oschwartz10612.Poppler）
+- 成果物：`output/c1_trs/cases/<案件ID>/`（manifest.json、result/conditions.csv・conditions.json・fpml.xml・review_items.md・evidence.json・c1_validation.xlsx、r_validation.json）
+- 終了コード：0 成果物あり、2 未接続、3 資料アクセス失敗、4 Copilot 読解失敗、5 Copilot 回答形式不正、6 Claude 読解失敗、7 Claude 回答形式不正
+- モックテスト：`Rscript scripts/test_c1_case_mock.R`
+- Aladdin 用JSONは仕様の提示前のため作らない
+- 旧方式（独立した二重読解）：`scripts/run_c1_document_independent.R`

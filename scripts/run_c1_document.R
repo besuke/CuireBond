@@ -1,82 +1,70 @@
-# c1：TRSターム条件PDF 1件の処理（URL入力 → Claude／Copilotの独立読解 → 照合 → 保存 → 通知）
+# c1：配置済み資料1件の処理（Copilot の一次読解 → Claude の原文照合・FpML 作成 → R の検証）
 # CURIEプロジェクトの最上位フォルダで実行する。
 #
-#   Rscript scripts/run_c1_document.R                     # 読むべきURLをコンソールに貼る
-#   Rscript scripts/run_c1_document.R <URLまたはファイルのパス> [--no-claude] [--copilot-dir=<フォルダ>] [--show-fpml]
-#   source("scripts/run_c1_document.R", encoding = "UTF-8")   # RStudio／Positron（URLを貼る）
+#   source("scripts/run_c1_document.R", encoding = "UTF-8")      # RStudio：共有URLを貼る（Copilot・Claude とも api）
+#   Rscript scripts/run_c1_document.R <共有URL> [--copilot=api|manual|demo] [--claude=api|demo]
+#           [--copilot-file=<回答ファイル>] [--claude-demo-dir=<フォルダ>] [--show-fpml]
 #
-# AIには元のURL（またはファイル）を渡して自分で読ませる。読めなかった場合は「読めなかった」と記録して終える。
-# 入力PDFは SharePoint に配置しない。成果物の保存先はデモ（ローカルフォルダ）。通知はデモ。
-# Copilot の出力は --copilot-dir で渡す（未指定なら確認待ち）。
+# 資料は、利用者が実行前に Claude と Microsoft 365 Copilot の両方から読める場所（SharePoint）へ配置しておく。
+# R は資料をアップロードしない。共有URLの資料を両方の読解に使い、片方だけ別のURLへ切り替えることはしない。
+# これは独立した二重読解ではない（Copilot の一次読解を Claude が原文で確かめる）。
+# Copilot の api は Microsoft 365 Copilot Chat API（beta／プレビュー）を使う。接続確認は PS/test_connection.ps1。
 
 if (!file.exists("CURIE.Rproj")) stop("CURIEプロジェクトの最上位フォルダで実行してください。")
 source("R/load_CURIE.R", encoding = "UTF-8")
 
 args <- commandArgs(trailingOnly = TRUE)
-source_arg <- if (length(args) && !startsWith(args[1], "--")) args[1] else NA_character_
-if (is.na(source_arg)) {
-  prompt <- "読むべきURL（またはPDFファイルのパス）を貼ってください: "
-  source_arg <- if (interactive()) readline(prompt) else {
-    cat(prompt)
-    readLines(file("stdin"), n = 1L, warn = FALSE)
-  }
-  source_arg <- trimws(gsub('^"|"$', "", source_arg))
+opt <- function(name, default = NULL) {
+  hit <- grep(paste0("^--", name, "="), args, value = TRUE)
+  if (length(hit)) sub(paste0("^--", name, "="), "", hit[1]) else default
 }
-if (!length(source_arg) || !nzchar(source_arg)) stop("URLまたはファイルのパスが入力されていません。", call. = FALSE)
-copilot_arg <- sub("^--copilot-dir=", "", grep("^--copilot-dir=", args, value = TRUE))
+shared_url <- if (length(args) && !startsWith(args[1], "--")) args[1] else NA_character_
+if (is.na(shared_url)) {
+  prompt <- "配置済み資料の共有URLを貼ってください: "
+  shared_url <- if (interactive()) readline(prompt) else { cat(prompt); readLines(file("stdin"), n = 1L, warn = FALSE) }
+  shared_url <- trimws(gsub('^"|"$', "", shared_url))
+}
+if (!length(shared_url) || !nzchar(shared_url)) stop("共有URLが入力されていません。", call. = FALSE)
 
-res <- workflows_trs_document_c1(
-  source = source_arg,
-  sharepoint = sharepoint_settings_c1(mode = "demo"),
-  run_claude = !"--no-claude" %in% args,
-  copilot_dir = if (length(copilot_arg)) copilot_arg else NULL
-)
+copilot_mode <- opt("copilot", "api")
+claude_mode <- opt("claude", "api")
+cat("\nCopilot：", copilot_mode, if (copilot_mode == "api") "（Microsoft 365 Copilot Chat API。beta／プレビュー）",
+    "　Claude：", claude_mode, "\n", sep = "")
 
-cat("\n状態：", res$status, "\n実行フォルダ：", res$run_dir, "\n")
-if (!is.null(res$error)) cat("エラー：", res$error, "\n")
-if (!is.null(res$summary)) {
-  cat("入力：", res$summary$input$file, " SHA-256 ", substr(res$summary$input$sha256, 1, 16), "…\n", sep = "")
-  cat("AIに渡した対象：", res$summary$input$sharepoint_url, "（", res$summary$input$sharepoint_connection, "）\n", sep = "")
-  cat("AIの出力：", paste(names(res$summary$agents), purrr::map_chr(res$summary$agents, "state"), sep = "=", collapse = "、"), "\n")
-  if (!is.null(res$summary$claude_run$cost_usd) && !is.na(res$summary$claude_run$cost_usd)) {
-    cat("Claude の費用（API料金換算の目安）：", round(res$summary$claude_run$cost_usd, 3), " USD\n", sep = "")
-  }
-  if (length(res$summary$reasons)) cat("理由：\n -", paste(res$summary$reasons, collapse = "\n - "), "\n")
+case <- workflows_c1_case(shared_url, copilot_mode, claude_mode,
+                          copilot_file = opt("copilot-file"), claude_demo_dir = opt("claude-demo-dir"))
+
+cat("\n状態：", case$state, "\n案件フォルダ：", case$case_dir, "\n", sep = "")
+if (!is.null(case$results$manifest$stages)) {
+  st <- case$results$manifest$stages
+  cat("段階：資料 ", st$document, "／Copilot ", st$copilot, "／Claude ", st$claude, "／成果物 ", st$outputs, "\n", sep = "")
+}
+if (!is.null(case$error)) cat("エラー：", case$error, "\n")
+if (!is.null(case$excel) && !is.na(case$excel)) cat("確認用Excel：", case$excel, "\n", sep = "")
+
+if (!is.null(case$validation)) {
+  checks <- case$validation$checks
+  cat("\n■ 検証結果（合格 ", sum(checks$結果 == "合格"), "／不合格 ", sum(checks$結果 == "不合格"),
+      "／その他 ", sum(!checks$結果 %in% c("合格", "不合格")), "）\n", sep = "")
+  print(checks, n = Inf, width = Inf)
 }
 
-# そもそもトータル・リターン・スワップか（文書自身の記載で判定。推測しない）
-trs <- trs_product_check_c1(res)
-cat("\n■ トータル・リターン・スワップか：", trs$answer, sep = "")
-if (!is.na(trs$page) || !is.na(trs$quote)) cat("（根拠 p.", trs$page, "「", trs$quote, "」）", sep = "")
-cat("　", trs$reason, "\n", sep = "")
+terms <- summarize_c1_case(case)
+if (!is.null(terms)) {
+  trs <- dplyr::filter(terms, 項目 == trs_field_dictionary_c1()$label_ja[1])
+  cat("\n■ トータル・リターン・スワップか：",
+      if (nrow(trs) && identical(trs$値[1], "TOTAL_RETURN_SWAP")) "はい" else if (nrow(trs) && nzchar(trs$値[1])) "いいえ" else "判定できない",
+      if (nrow(trs) && nzchar(trs$ページ[1])) paste0("（根拠 p.", trs$ページ[1], "）"), "\n", sep = "")
+  got <- dplyr::filter(terms, 結果 == "取得できた")
+  missing <- dplyr::filter(terms, 結果 == "取得できなかった")
+  cat("\n■ 取得できたもの（", nrow(got), "項目）\n", sep = "")
+  print(dplyr::select(got, 区分, 項目, 番号, 値, ページ, 確認状態, Copilotの値), n = Inf, width = Inf)
+  cat("\n■ 取得できなかったもの（", nrow(missing), "項目）\n", sep = "")
+  print(dplyr::select(missing, 区分, 項目, 確認状態, 理由), n = Inf, width = Inf)
 
-# 項目ごとの結果：取得できたもの／取得できなかったもの
-terms <- summarize_terms_c1(res)
-got <- dplyr::filter(terms, 結果 == "取得できた")
-missing <- dplyr::filter(terms, 結果 == "取得できなかった")
-cat("\n■ 取得できたもの（", nrow(got), "項目）\n", sep = "")
-print(dplyr::select(got, 区分, 項目, 値, ページ, 理由), n = Inf, width = Inf)
-cat("\n■ 取得できなかったもの（", nrow(missing), "項目）\n", sep = "")
-print(dplyr::select(missing, 区分, 項目, 必須, 理由), n = Inf, width = Inf)
-
-# FpML をコンソールにも表示するか（--show-fpml なら聞かずに表示）
-fpml_files <- res$final$fpml_files
-if (!is.null(fpml_files) && nrow(fpml_files)) {
-  show <- "--show-fpml" %in% args
-  if (!show) {
-    prompt <- "\nFpMLも表示しますか（Y/n）: "
-    ans <- if (interactive()) readline(prompt) else {
-      cat(prompt)
-      readLines(file("stdin"), n = 1L, warn = FALSE)
-    }
-    show <- length(ans) == 1L && toupper(trimws(ans)) %in% c("", "Y", "YES")
+  fpml <- case$results$files[["fpml"]]
+  if (!is.na(fpml)) {
+    show <- "--show-fpml" %in% args || (interactive() && toupper(trimws(readline("\nFpMLも表示しますか（Y/n）: "))) %in% c("", "Y", "YES"))
+    if (show) { cat("\n■ FpML：", normalizePath(fpml, winslash = "/"), "\n", sep = ""); writeLines(readLines(fpml, encoding = "UTF-8", warn = FALSE)) }
   }
-  if (show) {
-    purrr::pwalk(fpml_files, function(kind, fpml_file, ...) {
-      cat("\n■ FpML（", kind, "）：", normalizePath(fpml_file, winslash = "/"), "\n", sep = "")
-      writeLines(readLines(fpml_file, encoding = "UTF-8", warn = FALSE))
-    })
-  }
-} else {
-  cat("\nFpMLは作られていません（AIの抽出結果がない）。\n")
 }

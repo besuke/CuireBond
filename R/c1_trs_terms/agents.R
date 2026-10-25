@@ -49,7 +49,8 @@ prepare_agent_package_c1 <- function(agent, document, sharepoint_item, agent_dir
     "page はPDFのページ番号（1から）、quote は原文からの連続した抜き出しにすること。"
   )
   if (agent == "claude") {
-    target <- if (.is_url_c1(document$source)) {
+    # URLのPDFはURLを渡す。HTMLから変換したPDF・ローカルファイルは、このフォルダの document.pdf を渡す
+    target <- if (.is_url_c1(document$source) && identical(document$source_kind, "pdf")) {
       paste0("対象は次のURLのPDF。自分で取得して読むこと：", document$source)
     } else {
       file.copy(document$stored_path, file.path(agent_dir, "document.pdf"), overwrite = TRUE)
@@ -61,6 +62,7 @@ prepare_agent_package_c1 <- function(agent, document, sharepoint_item, agent_dir
     writeLines(c(header,
                  paste0("対象：", sharepoint_item$url,
                         "（URLの場合は公開元が差し替える可能性があるため、読んだ版のページ数が上と一致するか確認し、違えば review_items.md に書く）"),
+                 if (identical(document$source_kind, "html")) paste0("元はHTML。R がPDFへ変換したもの（", normalizePath(document$stored_path, winslash = "/"), "）を読み、page はそのPDFのページ番号にすること"),
                  "作成した3つのファイルを、次のフォルダに保存してください。",
                  paste0("保存先：", normalizePath(agent_dir, winslash = "/")), "", unreadable),
                file.path(agent_dir, "prompt_for_copilot.md"), useBytes = TRUE)
@@ -105,8 +107,13 @@ collect_agent_outputs_c1 <- function(agent, agent_dir, pdf_dir, xsd_path = Sys.g
   if (!present[["extraction"]]) {
     # AIが読めなかったと報告した場合（review_items.md の先頭）は、その旨を記録する
     review <- if (present[["review"]]) readLines(paths[["review"]], warn = FALSE, encoding = "UTF-8") else character()
-    state <- if (any(grepl("読めなかった", utils::head(review, 5)))) {
+    top <- utils::head(review, 5)
+    state <- if (any(grepl("読めなかった", top))) {
       paste0("読めなかった（", agent, " の報告。理由は review_items.md）")
+    } else if (any(grepl("回答の形式が不正", top))) {
+      "回答の形式が不正（確認待ち。理由は review_items.md）"
+    } else if (any(grepl("Copilot API の実行に失敗", top))) {
+      "Copilot API の実行に失敗（確認待ち。理由は review_items.md）"
     } else if (agent == "copilot") "未取得（Copilotの出力待ち）" else "未取得"
     return(list(status = status, extraction = NULL, state = state))
   }
