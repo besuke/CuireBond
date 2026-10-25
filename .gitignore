@@ -1,0 +1,13 @@
+# R / RStudio
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# データと出力はGit管理対象外（フォルダ自体は .gitkeep で保持）
+/data/*
+!/data/.gitkeep
+/output/*
+!/output/.gitkeep
+
+.DS_Store
