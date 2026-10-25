@@ -1,8 +1,8 @@
-# 依存関係の確認と、移植したPart IIの関数（R/lagrange/）の読込。
+# 依存関係の確認と、移植したPart IIの関数（R/Z0_utility/lagrange/）の読込。
 # このファイルは確認対象のパッケージに頼らず、R標準の関数だけで書く。
 # （tibble等が読めない環境でも、何が不足しているかを表示できるようにするため）
 #
-# R/lagrange/ は LagrangeFinance/R から移植した関数で、計算ロジックは変更していない。
+# R/Z0_utility/lagrange/ は LagrangeFinance/R から移植した関数で、計算ロジックは変更していない。
 # GaussQuant と QuantLib はパッケージとして利用し、関数はコピーしない。
 
 # 移植ファイルごとの必要パッケージ（各ファイルの .ws_require() と本文から確認したもの）
@@ -37,7 +37,7 @@ check_packages_CURIE <- function(packages = .curie_packages) {
 }
 
 # 移植した関数をグローバル環境へ読み込む（Part IIの関数名をそのまま使うため）
-load_lagrange_functions_CURIE <- function(files = .curie_lagrange_default, dir = file.path("R", "lagrange")) {
+load_lagrange_functions_CURIE <- function(files = .curie_lagrange_default, dir = file.path("R", "Z0_utility", "lagrange")) {
   unknown <- setdiff(files, names(.curie_lagrange_files))
   if (length(unknown)) stop("依存関係が未確認のファイルです: ", paste(unknown, collapse = ", "), call. = FALSE)
   check_packages_CURIE(unique(unlist(.curie_lagrange_files[files])))

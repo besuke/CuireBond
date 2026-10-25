@@ -1,8 +1,9 @@
 # CURIE デモ（JPYのみ）：円オファー → JPY OIS ASW・JGBスプレッド → Excel出力
 # CURIEプロジェクトの最上位フォルダで実行する。データはすべて架空のテスト用。
 
+if (!file.exists("CURIE.Rproj")) stop("CURIEプロジェクトの最上位フォルダで実行してください。")
 source("R/load_CURIE.R", encoding = "UTF-8")
-source("R/demo/prepare_demo_inputs.R", encoding = "UTF-8")
+source("scripts/demo_data/prepare_demo_inputs.R", encoding = "UTF-8")
 
 demo <- prepare_demo_inputs_CURIE()
 

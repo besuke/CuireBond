@@ -2,7 +2,7 @@
 #
 # 結合と既存の検証は、移植した workflows_validate_worksheet()
 # （内部で import_offer_sheet()、import_bond_master_attribute_ADP()、import_market_data()、
-#   merge_offer_bond_attributes() を使う。R/lagrange/）にそのまま任せる。
+#   merge_offer_bond_attributes() を使う。R/Z0_utility/lagrange/）にそのまま任せる。
 # オファーは convert_offer_sheet_CURIE() の結果を標準形式のExcelに書き、それを既存関数へ渡す。
 # 既存関数は元ファイル名・行番号などCURIEの追加列を落とすため、行の順序で戻す
 # （既存関数は行数・行順を変えないことを自ら確認している）。

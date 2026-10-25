@@ -1,8 +1,21 @@
 # CURIE
 
 債券運用の分析・入れ替え提案・発注支援を目指す R Project。
-現在はオファーシートの取込・スプレッド計算・Excel出力を実装している。
-実装済みの機能と今後の構想（Phase 1〜最終段階）は **[docs/development_plan.md](docs/development_plan.md)** を参照。
+現在は A1（オファーシートの取込・スプレッド計算・Excel出力）を実装している。
+実装済みの機能と今後の構想（A1〜A4、B1〜B3）は **[docs/development_plan.md](docs/development_plan.md)** を参照。
+
+| 番号 | 内容 | 状態 |
+|---|---|---|
+| A1 | オファーシート作成 | 実装済み（属性取得はデモ関数のみ） |
+| A2 | 時価適正性の検証 | 未実装 |
+| A3 | クレジットレポート読込・紐づけ | 未実装 |
+| A4 | 日次レポート・目玉オファー | 未実装 |
+| B1 | ファンド戦略・制約条件の読込 | 未実装 |
+| B2 | ポートフォリオ入れ替え提案 | 未実装 |
+| B3 | Aladdin APIによる発注 | 未実装 |
+| Z0 | 共通関数 | A1が使う範囲を実装済み |
+
+A1 の2つのワークフロー：
 
 - **JPY**：`workflows_offer_sheet_JPY()`。JPY建て（ユーロ円債を含む）。JPY OIS ASW と JGBスプレッド
 - **ISO**：`workflows_offer_sheet_ISO()`。円以外の建て通貨。自国通貨OIS ASW と 円換算ASW
@@ -15,9 +28,9 @@ JPYとISOは別々に実行でき、結果は別のExcelに出力する。入力
 RStudio／Positron で `CURIE.Rproj` のフォルダを開き、Rコンソールで次を実行する。
 
 ```r
-source("run_demo_JPY.R", encoding = "UTF-8")     # JPYのみ
-source("run_demo_ISO.R", encoding = "UTF-8")     # ISOのみ
-source("run_demo_checks.R", encoding = "UTF-8")  # 両方＋別パス・別形式・日付不一致などの確認
+source("scripts/run_demo_JPY.R", encoding = "UTF-8")     # JPYのみ
+source("scripts/run_demo_ISO.R", encoding = "UTF-8")     # ISOのみ
+source("scripts/run_demo_checks.R", encoding = "UTF-8")  # 両方＋別パス・別形式・日付不一致などの確認
 ```
 
 架空のデモデータを `data/demo/` に作り、結果を `output/` に出力する。
@@ -38,18 +51,29 @@ workflows_offer_sheet_JPY(
 )
 ```
 
-属性取得関数が返す列は `R/attributes.R` を参照。
+属性取得関数が返す列は `R/Z0_utility/attributes.R` を参照。
 
 ## フォルダ構成
 
-- `R/lagrange/` : LagrangeFinance/R から移植した Part II の関数（計算ロジックは変更しない）
-- `R/` : CURIE本体（オファー変換、取込設定、属性取得、検証、計算、Excel出力、ワークフロー）
-- `R/demo/` : デモデータの生成とデモ属性取得関数（本体とは分離）
-- `docs/spec_differences.md` : 仕様書との差分
-- `config/settings_example.R` : 実データ用の設定のサンプル（取込設定・属性取得関数の雛形）
-- `run_demo_*.R` : 架空のデモデータを再生成して実行するスクリプト
-- `data/` : 入力データ（Git管理対象外）
-- `output/` : 出力結果（Git管理対象外）
+```
+R/
+  load_CURIE.R        本体の読込（Z0 → A1）
+  A1_offer_sheet/     Phase 1：オファーシート作成
+  A2_valuation/       Phase 1：時価適正性の検証（未実装。READMEのみ）
+  A3_credit_reports/  Phase 1：クレジットレポート読込・紐づけ（未実装。READMEのみ）
+  A4_daily_report/    Phase 1：日次レポート・目玉オファー（未実装。READMEのみ）
+  B1_fund_strategy/   Phase 2：ファンド戦略・制約条件の読込（未実装。READMEのみ）
+  B2_rebalancing/     Phase 2：ポートフォリオ入れ替え提案（未実装。READMEのみ）
+  B3_aladdin_orders/  Phase 2：Aladdin APIによる発注（未実装。READMEのみ）
+  Z0_utility/         共通関数（lagrange/ に Part II の移植関数）
+scripts/              デモの生成（demo_data/）と実行スクリプト
+config/               実データ用の設定のサンプル
+docs/                 開発計画、仕様書との差分
+data/                 入力データ（Git管理対象外）
+output/               出力結果（Git管理対象外）
+```
+
+各フォルダの役割・予定する入出力は、そのフォルダの README.md を参照。
 
 ## 依存パッケージとセットアップ
 
@@ -76,14 +100,14 @@ Windowsでスマートアプリコントロールが有効な場合、CRANの一
 
 GaussQuant は当面インストール済み版を使う。2026-10-25 時点で、インストール済み版は
 2026.9.12.1（GitHub `fa721b2`）、ソース版（`C:/AnalyticFin/Projects/GaussQuant`）は 2026.06.18.1 で、
-版番号は異なる。CURIEが使う関数（`R/environment_info.R` の一覧）は本体・引数ともに一致することを
+版番号は異なる。CURIEが使う関数（`R/Z0_utility/environment_info.R` の一覧）は本体・引数ともに一致することを
 ワークフローの実行ごとに確認し、Excelの「実行環境」「GaussQuant照合」シートに残す。
 
 パッケージを入れ替え・更新した後は、Rセッションを再起動してから実行する。
 
 ## 次期機能（未実装）：オファーシートとクレジットレポートのURL連携
 
-開発計画の Phase 1-2（[docs/development_plan.md](docs/development_plan.md)）の一部。
+開発計画の A3（[docs/development_plan.md](docs/development_plan.md)、`R/A3_credit_reports/`）の一部。
 出力Excelのオファー行から、対応するクレジットレポートを開けるようにする。
 
 - **銘柄単位**：ISINをキーに、銘柄とクレジットレポートのURLを関連付ける。

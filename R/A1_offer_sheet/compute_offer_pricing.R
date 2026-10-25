@@ -1,11 +1,11 @@
-# 検証済みオファーの価格計算（計算のみ。Excel出力は R/write_offer_results_excel.R）。
+# 検証済みオファーの価格計算（計算のみ。Excel出力は R/A1_offer_sheet/write_offer_results_excel.R）。
 #
 # 使う既存関数
-# - OISカーブ   : instance_swap_curve()（R/lagrange/instance_swap_curve.R）
-# - 自国ASW     : compute_asset_swap_ISO()（R/lagrange/compute_asset_swap_ISO.R）
-# - 円換算ASW   : compute_asset_swap_basis_JPY()（R/lagrange/compute_asset_swap_basis_JPY.R）
+# - OISカーブ   : instance_swap_curve()（R/Z0_utility/lagrange/instance_swap_curve.R）
+# - 自国ASW     : compute_asset_swap_ISO()（R/Z0_utility/lagrange/compute_asset_swap_ISO.R）
+# - 円換算ASW   : compute_asset_swap_basis_JPY()（R/Z0_utility/lagrange/compute_asset_swap_basis_JPY.R）
 # - 債券の生成  : GaussQuant::fixed_rate_bond_GQL()、GaussQuant::day_counter_GQL()
-# - 円債の利回り: GaussQuant::bond_compound_yield_from_price_YEN_GQL()（R/market_data.R 経由）
+# - 円債の利回り: GaussQuant::bond_compound_yield_from_price_YEN_GQL()（R/Z0_utility/market_data_import.R 経由）
 #
 # 計算条件
 # - 評価日 = オファー日 = 各市場データの市場日。日付が違うデータでは補わない
@@ -36,76 +36,6 @@ pricing_settings_CURIE <- function(
     jpy_payment_frequency = jpy_payment_frequency, jpy_payment_lag = as.integer(jpy_payment_lag),
     jgb_compound_frequency = jgb_compound_frequency, assumption_note = assumption_note
   )
-}
-
-calendar_from_name_CURIE <- function(name) {
-  switch(name,
-    Japan = QuantLib::Japan(),
-    UnitedStates_GovernmentBond = QuantLib::UnitedStates("GovernmentBond"),
-    TARGET = QuantLib::TARGET(),
-    stop("対応していないカレンダーです: ", name, call. = FALSE)
-  )
-}
-
-frequency_period_CURIE <- function(coupon_frequency) {
-  name <- c(`1` = "Annual", `2` = "Semiannual", `4` = "Quarterly", `12` = "Monthly")[as.character(coupon_frequency)]
-  if (is.na(name)) stop("対応していない利払回数です: ", coupon_frequency, call. = FALSE)
-  QuantLib::Period(unname(name))
-}
-
-# 銘柄属性の1行から固定利付債を生成する（額面100、終期は計算終期）
-build_fixed_rate_bond_CURIE <- function(row) {
-  GaussQuant::fixed_rate_bond_GQL(
-    issue_date = as.character(row$issue_date),
-    maturity_date = as.character(row$calculation_end_date),
-    coupon_rate = row$coupon_rate,
-    face_amount = 100,
-    settlement_days = as.integer(row$settlement_days),
-    frequency = frequency_period_CURIE(row$coupon_frequency),
-    calendar = calendar_from_name_CURIE(row$calendar),
-    accrual_day_counter = GaussQuant::day_counter_GQL(row$day_count),
-    payment_convention = row$payment_convention,
-    schedule_convention = row$schedule_convention,
-    maturity_convention = row$maturity_convention,
-    date_generation = row$date_generation,
-    end_of_month = isTRUE(as.logical(row$end_of_month)),
-    redemption = row$redemption
-  )
-}
-
-# 評価日の気配で、必要な通貨のOISカーブを1回だけ作る。失敗は理由付きで返す。
-build_ois_curves_CURIE <- function(ois, valuation_date, currencies) {
-  currencies |>
-    rlang::set_names() |>
-    purrr::map(function(ccy) {
-      quotes <- dplyr::filter(ois, .data$marketdate == valuation_date, .data$currency == ccy)
-      if (!nrow(quotes)) {
-        return(list(error = paste0(ccy, " の評価日 ", valuation_date, " のOIS気配がない（別の日付では補わない）")))
-      }
-      tryCatch({
-        curve <- instance_swap_curve(ccy, marketdate = valuation_date, quotes = quotes)
-        curve$curve_id <- paste("OIS", paste(unique(quotes$source_file), collapse = ","),
-                                valuation_date, unique(curve$quotes$instrument), sep = "|")
-        curve$quote_time <- if ("quote_time" %in% names(quotes)) {
-          paste(unique(stats::na.omit(quotes$quote_time)), collapse = ", ")
-        } else ""
-        curve
-      }, error = function(e) list(error = conditionMessage(e)))
-    })
-}
-
-summarise_ois_curves_CURIE <- function(curves) {
-  purrr::imap(curves, function(x, ccy) {
-    if (!is.null(x$error)) {
-      return(tibble::tibble(currency = ccy, curve_status = "failed", curve_message = x$error))
-    }
-    tibble::tibble(
-      currency = ccy, curve_status = "success", curve_message = "",
-      ois_curve_id = x$curve_id, index = x$index_name, marketdate = x$marketdate,
-      quote_time = x$quote_time, quotes = nrow(x$quotes), last_tenordate = max(x$quotes$tenordate),
-      max_abs_quote_error_bp = max(abs(x$quote_repricing$quote_error_bp))
-    )
-  }) |> purrr::list_rbind()
 }
 
 .empty_pricing_CURIE <- function(settings) {
@@ -296,3 +226,4 @@ compute_offer_pricing_CURIE <- function(workflow = c("JPY", "ISO"), worksheet, o
     settings = settings
   )
 }
+

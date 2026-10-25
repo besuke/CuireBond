@@ -2,7 +2,7 @@
 # CURIE本体（R/load_CURIE.R）を読んだ後に source() する。
 
 for (.f in c("demo_data_common.R", "demo_data_offers.R", "demo_data_master.R", "demo_data_market.R")) {
-  source(file.path("R", "demo", .f), encoding = "UTF-8")
+  source(file.path("scripts", "demo_data", .f), encoding = "UTF-8")
 }
 rm(.f)
 
