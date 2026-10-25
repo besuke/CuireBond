@@ -4,23 +4,25 @@
 R で照合して確認表（Excel）とFpMLを作る。TRSの価格計算はしない。Aladdin用JSONは仕様の提示後に追加する。
 
 ```
-URL／ローカルファイル ─▶ R：取得（ダウンロード or 複製）・取得記録（取得元・日時・SHA-256）
-                          │
-                          ▼
-                   ローカルファイル：SharePoint に配置（保存先URL・識別情報）→ 同じ版を取り直してSHA-256を確認
-                   URL：SharePoint には上げず、元のURLを共有先にする（upload_input = "always" で上げる）
-                          │
+読むべきURLをコンソールに貼る（または引数でURL・ファイルを渡す）
+          │
+          ├─▶ R：同じURLを取得して取得記録（取得元・日時・SHA-256）。照合のためだけに使い、AIには渡さない
+          │
           ┌───────────────┴───────────────┐
           ▼                               ▼
    Claude Code（claude -p）          Microsoft 365 Copilot（依頼文 → 出力を取り込み）
-   同じ版のPDFを作業フォルダで読む     SharePoint のファイルを読む
+   URLを自分で読む（そのドメインだけ   同じURLを自分で読む
+   ウェブ取得を許可）
           │  extraction.json／fpml_proposal.xml／review_items.md（AIごとに保存）
+          │  読めなかったら「読めなかった」と理由だけを書いて終える（別の手段で読ませない）
           └───────────────┬───────────────┘
                           ▼
      R：引用の実在確認 → AI間の照合 → 規則チェック → 人の確認の反映 → FpMLの構文・スキーマ検証
                           ▼
-     最終成果物（確認表Excel・FpML）を保存 → SharePoint に保存 → 通知（完了／要確認／失敗と保存先）
+     最終成果物（確認表Excel・FpML）を保存 → 成果物の保存先へ保存 → 通知（完了／要確認／失敗と保存先）
 ```
+
+入力PDFは SharePoint に上げない（既定 `upload_input = "never"`）。必要なら `"auto"`（ローカルファイルだけ）・`"always"` に切り替える。
 
 ## 守ること
 
@@ -29,14 +31,18 @@ URL／ローカルファイル ─▶ R：取得（ダウンロード or 複製�
 - **確認待ち**：AI間の不一致、必須項目の不足、AIの出力がそろわない場合は「要確認」
 - **区別すること**：参照資産・指数と資金調達の参照金利、参照資産の評価日と資金調達金利のフィキシング／リセット日
 - **旧参照金利**：原文どおり（例：USD-LIBOR-BBA を SOFR に置き換えない）
-- **同じ版を読む**：SharePoint のURLを渡すだけでAIが読めるとは仮定しない。Claude には、取り直して SHA-256 を確かめたPDFを作業フォルダで渡す
+- **AIが自分で読む**：AIには元のURL（またはファイル）を渡す。R が本文を抜き出してAIに渡すことはしない。
+  読めなかったAIは「読めなかった」と記録して終え、その分は照合で「片方のみ」「未取得」となり確認待ちになる
+- **版の確認**：R が取得した版の SHA-256・ページ数・取得日時を依頼文に書く。URLの中身は公開元が差し替える可能性があるため、
+  AIが読んだ版のページ数が違えば要確認事項に書かせ、引用の実在確認で食い違いを検出する
 - **再現性**：同じ抽出JSONからは毎回同じ確認表・FpMLを作る（FpMLのSHA-256を記録）。AIの読取のぶれは、照合と引用の実在確認で検出する
 - **AIの出力と最終成果物を分ける**：`agents/claude`・`agents/copilot` と `final` は別フォルダ
 
 ## 実行方法
 
 ```r
-# PDF 1件（URL またはローカルファイル）。SharePoint・通知はデモ
+# PDF 1件。引数なしなら、読むべきURLをコンソールに貼る。成果物の保存先・通知はデモ
+Rscript scripts/run_c1_document.R
 Rscript scripts/run_c1_document.R https://www.sc.com/en/uploads/sites/66/content/docs/Total-Return-Swap.pdf
 Rscript scripts/run_c1_document.R C:/path/to/termsheet.pdf --copilot-dir=C:/path/to/copilot_outputs
 Rscript scripts/run_c1_document.R <URL> --no-claude      # Claude を起動しない（流れの確認）

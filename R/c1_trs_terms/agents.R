@@ -1,15 +1,17 @@
 # c1：Claude と Microsoft 365 Copilot による独立読解。
 #
-# 両者に同じ版のPDF（SharePointに配置し、取り直してSHA-256が一致したもの）と同じ指示書を渡し、
+# 両者に同じ対象（URL、またはローカルファイル）と同じ指示書を渡し、AI自身に読ませる。
+# R が本文を抜き出してAIに渡すことはしない。AIが読めなかった場合は、読めなかったと記録して終える。
 # それぞれ次を作らせる（AIごとのフォルダに保存し、照合後の最終成果物とは分ける）。
 #   extraction.json   … 条件一覧（共通JSON。docs/c1_trs_extraction_instructions.md の形式）
 #   fpml_proposal.xml … FpMLへの変換案（AIが作ったもの。Rで構文・スキーマを検証する）
-#   review_items.md   … 要確認事項と根拠ページ
+#   review_items.md   … 要確認事項と根拠ページ（読めなかった場合はその理由）
 # Excelの条件一覧は、AIの extraction.json から R が作る（書式・列構成をそろえるため）。
+# R は照合のためだけに同じ対象を取得し、SHA-256 を記録して引用の実在を確かめる。
 #
-# Claude：Claude Code を非対話モード（claude -p）で起動し、作業フォルダ内のPDFと指示書だけを読ませる。
-#         SharePoint のURLを渡すだけで読めるとは仮定しない。
-# Copilot：R から直接実行する手段が未設定。依頼文（SharePointのURLと指示）を作り、
+# Claude：Claude Code を非対話モード（claude -p）で起動する。URLなら、そのドメインだけウェブ取得を許可する。
+#         ローカルファイルなら作業フォルダにPDFを置く。読み書きは作業フォルダ内だけ。
+# Copilot：R から直接実行する手段が未設定。依頼文（同じURLと指示）を作り、
 #          Copilot の出力を所定のフォルダに置いてもらって取り込む（未取得なら確認待ち）。
 
 .agent_files_c1 <- c(extraction = "extraction.json", fpml = "fpml_proposal.xml", review = "review_items.md")
@@ -40,33 +42,46 @@ prepare_agent_package_c1 <- function(agent, document, sharepoint_item, agent_dir
     "3. `review_items.md`：要確認事項（空欄・選択肢・記載なし・解釈に迷った点）と根拠ページの一覧",
     ""
   )
+  unreadable <- c(
+    "## 読めなかった場合",
+    "対象を自分で読めなかった場合（取得できない、本文を読み取れない等）は、別の手段で読もうとせず、",
+    "extraction.json と fpml_proposal.xml は作らないこと。review_items.md の先頭に「読めなかった」と書き、理由を書くこと。",
+    "page はPDFのページ番号（1から）、quote は原文からの連続した抜き出しにすること。"
+  )
   if (agent == "claude") {
-    file.copy(document$stored_path, file.path(agent_dir, "document.pdf"), overwrite = TRUE)
-    # PDFの本文（ページ番号つき）。R が pdftools で抜き出す。引用の実在確認にも同じ本文を使う
-    pages <- pdftools::pdf_text(document$stored_path)
-    writeLines(unlist(purrr::imap(pages, \(p, i) c(sprintf("===== PAGE %d =====", i), p))),
-               file.path(agent_dir, "document_pages.txt"), useBytes = TRUE)
-    writeLines(c(header,
-                 "対象PDFはこのフォルダの `document.pdf`（SharePointから取得した同じ版）。",
-                 "PDFの本文は、R が同じPDFから抜き出した `document_pages.txt`（「===== PAGE n =====」でページを区切る）で読むこと。",
-                 "page はこの区切りのページ番号、quote はこの本文からの連続した抜き出しにすること（空白・改行の違いは R が吸収する）。",
-                 "このフォルダ以外のファイルを読み書きしないこと。"), file.path(agent_dir, "prompt.md"), useBytes = TRUE)
+    target <- if (.is_url_c1(document$source)) {
+      paste0("対象は次のURLのPDF。自分で取得して読むこと：", document$source)
+    } else {
+      file.copy(document$stored_path, file.path(agent_dir, "document.pdf"), overwrite = TRUE)
+      "対象はこのフォルダの `document.pdf`。自分で読むこと。"
+    }
+    writeLines(c(header, target, "このフォルダ以外のファイルを読み書きしないこと。", "", unreadable),
+               file.path(agent_dir, "prompt.md"), useBytes = TRUE)
   } else {
-    writeLines(c(header, "対象PDFは上の共有先のファイル（URLの場合は公開元が差し替える可能性があるため、読んだ版の日付・ページ数が上と一致するか確認し、違えば review_items.md に書く）。作成した3つのファイルを、このフォルダに保存してください。",
-                 paste0("保存先：", normalizePath(agent_dir, winslash = "/"))),
+    writeLines(c(header,
+                 paste0("対象：", sharepoint_item$url,
+                        "（URLの場合は公開元が差し替える可能性があるため、読んだ版のページ数が上と一致するか確認し、違えば review_items.md に書く）"),
+                 "作成した3つのファイルを、次のフォルダに保存してください。",
+                 paste0("保存先：", normalizePath(agent_dir, winslash = "/")), "", unreadable),
                file.path(agent_dir, "prompt_for_copilot.md"), useBytes = TRUE)
   }
   invisible(agent_dir)
 }
 
-# Claude Code を非対話モードで実行する（作業フォルダ内のファイルだけを使う）
-run_claude_agent_c1 <- function(agent_dir, claude_cmd = "claude", timeout_sec = 1800) {
+# Claude Code を非対話モードで実行する（作業フォルダ内のファイルと、対象URLのドメインだけを使う）
+run_claude_agent_c1 <- function(agent_dir, source, claude_cmd = "claude", timeout_sec = 1800) {
   # コマンドラインは英語（Windowsのコマンドラインで日本語が化けないように）。詳しい指示は日本語の prompt.md
   prompt <- paste("Read prompt.md in the current folder and follow it exactly.",
-                  "Use only instructions.md and document_pages.txt (the text of document.pdf) in this folder as sources.",
-                  "Create extraction.json, fpml_proposal.xml and review_items.md in this folder.")
+                  "Read the target document yourself; if you cannot read it, do not try other means and",
+                  "write only review_items.md explaining why.",
+                  "Otherwise create extraction.json, fpml_proposal.xml and review_items.md in this folder.")
+  tools <- c("Read", "Write")
+  if (.is_url_c1(source)) {
+    host <- sub("^https?://([^/:?#]+).*$", "\\1", source, ignore.case = TRUE)
+    tools <- c(tools, paste0("WebFetch(domain:", host, ")"))   # 対象のドメインだけウェブ取得を許可
+  }
   args <- c("-p", shQuote(prompt), "--output-format", "json",
-            "--allowedTools", "Read", "Write", "--permission-mode", "acceptEdits")
+            "--allowedTools", shQuote(tools), "--permission-mode", "acceptEdits")
   started <- Sys.time()
   out <- withr::with_dir(agent_dir, suppressWarnings(
     system2(claude_cmd, args, stdout = TRUE, stderr = TRUE, timeout = timeout_sec)))
@@ -88,7 +103,12 @@ collect_agent_outputs_c1 <- function(agent, agent_dir, pdf_dir, xsd_path = Sys.g
   present <- rlang::set_names(file.exists(paths), names(paths))
   status <- tibble::tibble(agent = agent, output = names(paths), file = basename(paths), present = present)
   if (!present[["extraction"]]) {
-    return(list(status = status, extraction = NULL, state = if (agent == "copilot") "未取得（Copilotの出力待ち）" else "未取得"))
+    # AIが読めなかったと報告した場合（review_items.md の先頭）は、その旨を記録する
+    review <- if (present[["review"]]) readLines(paths[["review"]], warn = FALSE, encoding = "UTF-8") else character()
+    state <- if (any(grepl("読めなかった", utils::head(review, 5)))) {
+      paste0("読めなかった（", agent, " の報告。理由は review_items.md）")
+    } else if (agent == "copilot") "未取得（Copilotの出力待ち）" else "未取得"
+    return(list(status = status, extraction = NULL, state = state))
   }
   read <- tryCatch(read_trs_extractions_c1(paths[["extraction"]]), error = function(e) e)
   if (inherits(read, "error")) {

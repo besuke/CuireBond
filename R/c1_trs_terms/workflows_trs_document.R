@@ -3,8 +3,8 @@
 # source         ：PDFのURL、またはローカルファイルのパス
 # run_root       ：実行ごとのフォルダを作る場所（既定 output/c1_trs/runs）
 # sharepoint     ：sharepoint_settings_c1()。既定はデモ（ローカルフォルダ）
-# upload_input   ："auto"（既定）：ローカルファイルだけ SharePoint に配置し、URL は元のURLを共有先にする
-#                  "always"：URL でも配置する。"never"：配置しない（成果物は保存する）
+# upload_input   ："never"（既定）：入力PDFは SharePoint に配置しない（AIには元のURL・ファイルを渡す）
+#                  "auto"：ローカルファイルだけ配置する。"always"：URLでも配置する（成果物はどれでも保存する）
 # run_claude     ：TRUE なら Claude Code を非対話モードで実行して読ませる
 # copilot_dir    ：Copilot の出力（extraction.json 等）を置いたフォルダ。NULL なら作業フォルダの agents/copilot を見る
 # overrides_path ：人による確認結果のCSV（確認待ちの解消に使う）
@@ -24,7 +24,7 @@
 
 workflows_trs_document_c1 <- function(
     source, run_root = file.path("output", "c1_trs", "runs"),
-    sharepoint = sharepoint_settings_c1(), upload_input = c("auto", "always", "never"),
+    sharepoint = sharepoint_settings_c1(), upload_input = c("never", "auto", "always"),
     run_claude = TRUE, copilot_dir = NULL,
     overrides_path = NULL, notifier = NULL, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""),
     instruction_path = file.path("docs", "c1_trs_extraction_instructions.md")) {
@@ -56,7 +56,7 @@ workflows_trs_document_c1 <- function(
     } else {
       sp_item <- tibble::tibble(remote_path = NA_character_, url = source, item_id = NA_character_,
                                 sha256 = acquired$sha256, uploaded_at = NA_character_,
-                                connection = paste0("元のURL（SharePointには配置しない。R の取得日時 ", acquired$retrieved_at, "）"))
+                                connection = paste0("元の場所（SharePointには配置しない。R の取得日時 ", acquired$retrieved_at, "）"))
       fetched <- acquired$stored_path
     }
     pdf_dir <- file.path(run_dir, "agents", "pdf")
@@ -67,7 +67,7 @@ workflows_trs_document_c1 <- function(
     # 3. 独立読解（AIごとのフォルダ）
     agent_dirs <- c(claude = file.path(run_dir, "agents", "claude"), copilot = file.path(run_dir, "agents", "copilot"))
     purrr::iwalk(agent_dirs, \(d, a) prepare_agent_package_c1(a, document, sp_item, d, instruction_path))
-    claude_run <- if (run_claude) run_claude_agent_c1(agent_dirs[["claude"]]) else
+    claude_run <- if (run_claude) run_claude_agent_c1(agent_dirs[["claude"]], source) else
       tibble::tibble(agent = "claude", exit_status = NA_integer_, started_at = NA_character_, seconds = NA_real_,
                      cli_version = NA_character_)
     if (!is.null(copilot_dir)) {
