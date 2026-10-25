@@ -1,5 +1,5 @@
 # デモの銘柄属性と、デモ用の属性取得関数（本番では Aladdin API を使う関数に差し替える）。
-# 属性取得関数の約束は R/Z0_utility/attributes.R：function(ISIN, valuation_date) -> 1銘柄1行の tibble。
+# 属性取得関数の約束は R/z0_utility/attributes.R：function(ISIN, valuation_date) -> 1銘柄1行の tibble。
 # ISINと銘柄はすべて架空のテスト用で、実在しない。
 
 create_demo_attributes_CURIE <- function(dir, marketdate = demo_marketdate_CURIE) {

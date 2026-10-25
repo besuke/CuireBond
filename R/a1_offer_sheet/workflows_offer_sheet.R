@@ -59,7 +59,7 @@
 # jgb_path   : JGB時価ファイル（単価と、利回り計算に必要な銘柄属性）
 # valuation_date : 評価日（オファー日・各市場データの市場日と一致させる）
 # output_path    : 出力Excel
-# attribute_fetcher : function(ISIN, valuation_date) -> 銘柄属性（R/Z0_utility/attributes.R の列）
+# attribute_fetcher : function(ISIN, valuation_date) -> 銘柄属性（R/z0_utility/attributes.R の列）
 workflows_offer_sheet_JPY <- function(
     offer_path, ois_path, jgb_path, valuation_date, output_path, attribute_fetcher,
     offer_settings = offer_import_settings_CURIE(currency = "JPY"),

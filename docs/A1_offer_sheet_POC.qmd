@@ -1,0 +1,434 @@
+---
+title: "CURIE A1 オファーシート作成 POC"
+subtitle: "既存のA1ワークフローを実行し、入力・計算条件・結果・制約を確認する"
+lang: ja
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: show
+    code-summary: "コード"
+    embed-resources: true
+    df-print: default
+execute:
+  eval: true
+  echo: true
+  warning: false
+  message: false
+params:
+  curie_root: ""
+  gaussquant_src: ""
+  demo_subdir: "data/demo_poc"
+  output_subdir: "output/poc"
+---
+
+# このPOCの位置づけ
+
+本書は、CURIEの **A1 オファーシート作成** を実際に実行し、入力・計算条件・結果・制約を確認するPOCである。
+コード例の紹介ではなく、既存のA1ワークフロー（`workflows_offer_sheet_JPY()`／`workflows_offer_sheet_ISO()`）と
+デモデータ生成関数をそのまま呼び出す。計算処理は本書の中で実装しない。
+
+| 項目 | 内容 |
+|---|---|
+| 対象 | A1 オファーシート作成（デモ実装済み・本番連携は未完了） |
+| JPY | JPY建ての債券（ユーロ円債を含む）。JPY OIS ASW と JGBスプレッド |
+| ISO | 円以外の建て通貨（デモはUSD・EUR）。自国通貨OIS ASW と 円換算ASW |
+| データ | **すべて架空のテスト用データ**。実在の銘柄・市場価格ではない |
+| 表 | ワークフロー関数の戻り値から作る（出力Excelは読み直さない） |
+
+CURIE全体の中での位置づけ（`CURIE_Mockup_Overview.pdf`）：画面の「03 分析・レポート」から呼び出すRの処理のうち、
+「01 オファーを計算・整理（市場レートとオファー価格から利回り・ASW等を計算）」に当たる。
+数値はRで確定し、AIによる要約（A3・A4）は確定した数値を変更しない。
+
+本番連携で未完了の内容：
+
+- Aladdin APIによる銘柄属性取得（本書ではデモの属性取得関数を使う）
+- 実際の入力ファイル（オファーExcel、OIS、JGB時価、FX、ベーシス）への対応・確認
+- ASW翌日物レッグの実取引条件の確定（本書では半年払い・支払ラグ0をデモの仮定として使う）
+
+# CURIEルートの解決
+
+本書は置き場所や作業ディレクトリに依存しない。最初にCURIEのプロジェクトルート
+（`CURIE.Rproj` と `R/load_CURIE.R` があるフォルダ）を決め、読込・入力・作業ファイル・出力のパスは
+すべてそのルートを基準に組み立てる。
+
+| 優先順位 | 指定方法 | 例 |
+|---|---|---|
+| 1 | Quarto の params `curie_root` | `quarto render A1_offer_sheet_POC.qmd -P curie_root:C:/AnalyticFin/Projects/CURIE` |
+| 2 | 環境変数 `CURIE_ROOT` | PowerShell：`$env:CURIE_ROOT = "C:/AnalyticFin/Projects/CURIE"` |
+| 3 | 本書（QMD）の場所から上位フォルダを探索 | CURIE内のどのフォルダに置いても見つかる |
+| 4 | 作業ディレクトリから上位フォルダを探索 | CURIE内で実行した場合 |
+
+1・2 で指定したフォルダがCURIEルートでなければ、別の候補を探さずに停止する（指定の誤りを見逃さないため）。
+どこにも見つからない場合も、指定方法を示して停止する。
+
+```{r}
+#| label: resolve-root
+
+# params（Quarto）→ 環境変数 → QMDの場所の上位 → 作業ディレクトリの上位 の順にCURIEルートを決める
+param_value <- function(name) {
+  value <- if (exists("params", inherits = TRUE)) params[[name]] else NULL
+  if (is.null(value) || is.na(value) || !nzchar(value)) "" else as.character(value)
+}
+is_curie_root <- function(dir) {
+  file.exists(file.path(dir, "CURIE.Rproj")) && file.exists(file.path(dir, "R", "load_CURIE.R"))
+}
+ancestor_dirs <- function(dir) {
+  dir <- normalizePath(dir, winslash = "/", mustWork = FALSE)
+  unique(purrr::accumulate(seq_len(64), \(d, i) dirname(d), .init = dir))
+}
+resolve_curie_root <- function() {
+  explicit <- c("params curie_root" = param_value("curie_root"), "環境変数 CURIE_ROOT" = Sys.getenv("CURIE_ROOT"))
+  explicit <- explicit[nzchar(explicit)]
+  if (length(explicit)) {
+    root <- normalizePath(explicit[[1]], winslash = "/", mustWork = FALSE)
+    if (!is_curie_root(root)) {
+      stop(names(explicit)[1], " で指定したフォルダはCURIEルートではありません: ", root,
+           "\nCURIE.Rproj と R/load_CURIE.R があるフォルダを指定してください。", call. = FALSE)
+    }
+    return(list(root = root, method = names(explicit)[1]))
+  }
+  qmd_dir <- tryCatch(dirname(knitr::current_input(dir = TRUE)), error = function(e) NA_character_)
+  starts <- c("QMDの場所の上位フォルダ" = qmd_dir, "作業ディレクトリの上位フォルダ" = getwd())
+  starts <- starts[!is.na(starts)]
+  found <- purrr::imap(starts, \(start, how) {
+    hit <- purrr::detect(ancestor_dirs(start), is_curie_root)
+    if (is.null(hit)) NULL else list(root = hit, method = how)
+  }) |> purrr::compact()
+  if (length(found)) return(found[[1]])
+  stop("CURIEルートが見つかりません。次のいずれかで指定してください。\n",
+       "  quarto render <QMD> -P curie_root:<CURIEのフォルダ>\n",
+       "  環境変数 CURIE_ROOT に <CURIEのフォルダ> を設定\n",
+       "探索した起点: ", paste(starts, collapse = ", "), call. = FALSE)
+}
+
+resolved <- resolve_curie_root()
+curie_root <- resolved$root
+curie_path <- function(...) file.path(curie_root, ...)
+
+# 既存コードはCURIEルートでの実行を前提に相対パスで読み込むため、
+# 必要な処理の間だけ作業ディレクトリをルートへ切り替え、終了時に戻す
+in_curie <- function(expr) withr::with_dir(curie_root, expr)
+
+gaussquant_src <- c(param_value("gaussquant_src"), Sys.getenv("CURIE_GAUSSQUANT_SRC"),
+                    file.path(dirname(curie_root), "GaussQuant"))
+gaussquant_src <- gaussquant_src[nzchar(gaussquant_src)][1]
+demo_dir <- curie_path(param_value("demo_subdir"))
+out_dir <- curie_path(param_value("output_subdir"))
+
+cat("CURIEルート :", curie_root, "（", resolved$method, "）\n")
+cat("デモ入力    :", demo_dir, "\n")
+cat("出力        :", out_dir, "\n")
+cat("GaussQuantソース（照合用）:", gaussquant_src, "\n")
+```
+
+レンダリングの例（HTMLは自己完結型で、QMDと同じフォルダに出力される）：
+
+```powershell
+# CURIE内（docs/ のまま）
+quarto render C:/AnalyticFin/Projects/CURIE/docs/A1_offer_sheet_POC.qmd
+
+# CURIE内の別フォルダへ移動した場合（ルートは自動で見つかる）
+quarto render C:/AnalyticFin/Projects/CURIE/docs/poc/A1_offer_sheet_POC.qmd
+
+# CURIEの外へ移動した場合（params で指定）
+quarto render D:/work/A1_offer_sheet_POC.qmd -P curie_root:C:/AnalyticFin/Projects/CURIE
+
+# CURIEの外へ移動した場合（環境変数で指定）
+$env:CURIE_ROOT = "C:/AnalyticFin/Projects/CURIE"
+quarto render D:/work/A1_offer_sheet_POC.qmd
+```
+
+# 必要なパッケージとCURIEの読込
+
+CURIE本体の依存（tidyverse、writexl、collapse、QuantLib、GaussQuant）は `R/load_CURIE.R` が確認する。
+本書の表示には、これに加えて flextable と withr を使う。
+
+```{r}
+#| label: load-curie
+
+report_packages <- c("flextable", "withr")
+missing_report <- report_packages[!purrr::map_lgl(report_packages, requireNamespace, quietly = TRUE)]
+if (length(missing_report)) stop("表示に必要なパッケージがありません: ", paste(missing_report, collapse = ", "), call. = FALSE)
+
+in_curie(source(curie_path("R", "load_CURIE.R"), encoding = "UTF-8"))
+in_curie(source(curie_path("scripts", "demo_data", "prepare_demo_inputs.R"), encoding = "UTF-8"))
+suppressPackageStartupMessages(library(dplyr))
+```
+
+# デモ入力データの生成
+
+`scripts/demo_data/` のデモデータ生成関数で、架空のオファーExcel（JPY／ISO）、銘柄属性、市場データを作る。
+生成先はCURIEルート配下の `r params$demo_subdir` で、既存デモ（`data/demo`）とは分ける。
+
+| デモの銘柄 | JPY側 | ISO側 |
+|---|---|---|
+| 固定利付・満期一括・償還額100 | 円債4銘柄＋**ユーロ円債1銘柄**（建て通貨JPY） | USD 3銘柄、EUR 2銘柄 |
+| 未対応の確認用 | 円変動利付債1銘柄 | USDコーラブル債1銘柄 |
+
+```{r}
+#| label: demo-inputs
+
+demo <- in_curie(prepare_demo_inputs_CURIE(dir = demo_dir))
+input_files <- c(
+  "JPYオファーExcel" = demo$offer_jpy, "ISOオファーExcel" = demo$offer_iso,
+  "OIS（JPY）" = demo$ois_jpy, "OIS（USD）" = demo$ois_usd, "OIS（EUR）" = demo$ois_eur,
+  "JGB時価" = demo$jgb, "FXスポット" = demo$fx, "通貨ベーシス" = demo$basis
+)
+# 元の入力ファイルを上書きしていないことを、実行前後のハッシュで確かめる
+input_md5_before <- tools::md5sum(input_files)
+
+tibble::tibble(
+  入力 = names(input_files),
+  ファイル = sub(paste0("^", curie_root, "/"), "", normalizePath(input_files, winslash = "/")),
+  使うワークフロー = c("JPY", "ISO", "JPY・ISO", "ISO", "ISO", "JPY", "ISO", "ISO")
+) |>
+  flextable_CURIE(widths = c(入力 = 1.6, ファイル = 4.4, 使うワークフロー = 1.2),
+                  caption = "デモ入力ファイル（CURIEルートからの相対パス）")
+```
+
+# JPYワークフローの実行
+
+JPYとISOは、オファーExcelも市場データの読込時点も別である。JPYだけを単独で実行する。
+オファーExcelには候補シートが2つ（「円債オファー」と「円債オファー_訂正前」）あるため、シートを明示指定する。
+
+```{r}
+#| label: run-jpy
+#| results: hide
+
+jpy <- in_curie(workflows_offer_sheet_JPY(
+  offer_path = demo$offer_jpy,
+  ois_path = demo$ois_jpy,
+  jgb_path = demo$jgb,
+  valuation_date = demo$marketdate,
+  output_path = file.path(out_dir, "offer_results_JPY_poc.xlsx"),
+  attribute_fetcher = demo$attribute_fetcher,
+  offer_settings = offer_import_settings_CURIE(sheet = "円債オファー", currency = "JPY"),
+  work_dir = file.path(out_dir, "work", "JPY"),
+  gaussquant_src = gaussquant_src
+))
+```
+
+## 評価条件と件数
+
+```{r}
+#| label: jpy-conditions
+a1_conditions_table_CURIE(jpy, "JPY")
+```
+
+```{r}
+#| label: jpy-summary
+a1_status_summary_table_CURIE(jpy, "JPY")
+```
+
+## 計算結果
+
+JGBスプレッドは（対象債の複利利回り − 同じ償還日に補間したJGB複利利回り）× 100 bp。
+「未計算」は計算状態が成功以外で値を計算していないこと、「欠損」は計算したはずの値が欠けていること（要確認）を表す。
+
+```{r}
+#| label: jpy-results
+a1_jpy_results_table_CURIE(jpy)
+```
+
+```{r}
+#| label: jpy-exceptions
+a1_exceptions_table_CURIE(jpy, "JPY")
+```
+
+# ISOワークフローの実行
+
+ISOだけを単独で実行する。OISは通貨ごとに別ファイルで渡し、円換算ASWに使うJPYのOISも含める。
+
+```{r}
+#| label: run-iso
+#| results: hide
+
+iso <- in_curie(workflows_offer_sheet_ISO(
+  offer_path = demo$offer_iso,
+  ois_paths = c(demo$ois_usd, demo$ois_eur, demo$ois_jpy),
+  basis_path = demo$basis,
+  fx_path = demo$fx,
+  valuation_date = demo$marketdate,
+  output_path = file.path(out_dir, "offer_results_ISO_poc.xlsx"),
+  attribute_fetcher = demo$attribute_fetcher,
+  work_dir = file.path(out_dir, "work", "ISO"),
+  gaussquant_src = gaussquant_src
+))
+```
+
+## 評価条件と件数
+
+```{r}
+#| label: iso-conditions
+a1_conditions_table_CURIE(iso, "ISO")
+```
+
+```{r}
+#| label: iso-summary
+a1_status_summary_table_CURIE(iso, "ISO")
+```
+
+## 計算結果
+
+円換算ASWの評価値は `円換算ASW`。`参考：単純合算`（自国通貨OIS ASW＋ベーシス）は比較用で、評価には使わない。
+
+```{r}
+#| label: iso-results
+a1_iso_results_table_CURIE(iso)
+```
+
+```{r}
+#| label: iso-exceptions
+a1_exceptions_table_CURIE(iso, "ISO")
+```
+
+# 検証明細
+
+## OISカーブの気配再現誤差
+
+既存の `instance_swap_curve()` は、構築したカーブで入力気配を再評価し、誤差が 1e-4 bp を超えると停止する。
+
+```{r}
+#| label: curve-check
+a1_curve_check_table_CURIE(jpy, "JPY")
+a1_curve_check_table_CURIE(iso, "ISO")
+```
+
+## JGB：単価から計算した複利利回りと補間
+
+JGB時価ファイルの単価（クリーン）と属性から、Part II 第1章と同じ GaussQuant の円債関数
+（`bond_compound_yield_from_price_YEN_GQL()`、利払・複利とも年2回）で複利利回りを計算する。
+対象JPY債の複利利回りも同じ関数・同じ受渡日で計算するため、両者は比較できる。
+JGB単価の受渡日がオファーの受渡日と違う場合（例：T+1とT+2）は比較に使わない。
+
+```{r}
+#| label: jgb-yields
+a1_jgb_yields_table_CURIE(jpy)
+```
+
+```{r}
+#| label: jgb-interpolation
+a1_jgb_interpolation_table_CURIE(jpy)
+```
+
+## 通貨ベーシスの平均と補間
+
+同一の市場日・通貨ペア・契約条件・償還日の気配を算術平均し、評価日からの残存年数を横軸に
+自然3次スプラインで補間する。観測範囲外は外挿しない。これは **ベーシス気配の補間** であり、
+CCSカーブ全体のブートストラップではない。
+
+```{r}
+#| label: basis
+a1_basis_table_CURIE(iso)
+```
+
+## 円換算ASWの残差
+
+```{r}
+#| label: iso-residual
+a1_iso_residual_table_CURIE(iso)
+```
+
+## 元の入力ファイルを上書きしていないこと
+
+```{r}
+#| label: no-overwrite
+
+input_md5_after <- tools::md5sum(input_files)
+tibble::tibble(
+  入力 = names(input_files),
+  実行前後のハッシュ = dplyr::if_else(unname(input_md5_before == input_md5_after), "一致（変更なし）", "不一致"),
+  出力先と同じか = dplyr::if_else(
+    normalizePath(input_files, winslash = "/") %in% normalizePath(c(jpy$output_path, iso$output_path), winslash = "/", mustWork = FALSE),
+    "同じ（要確認）", "別ファイル")
+) |>
+  flextable_CURIE(widths = c(入力 = 1.6, 実行前後のハッシュ = 1.8, 出力先と同じか = 1.6),
+                  caption = "入力ファイルの保全（出力Excelは別ファイル）")
+stopifnot(all(input_md5_before == input_md5_after))
+
+# 検証用に、計算結果をR形式でも保存する（Git管理対象外の output/ 配下）
+saveRDS(list(jpy = jpy$results, iso = iso$results), file.path(out_dir, "poc_results.rds"))
+```
+
+出力Excel（Excel出力機能は既存のまま）：
+
+- JPY：`r sub(paste0("^", curie_root, "/"), "", normalizePath(jpy$output_path, winslash = "/"))`
+- ISO：`r sub(paste0("^", curie_root, "/"), "", normalizePath(iso$output_path, winslash = "/"))`
+
+# 未対応商品・計算条件・簡易モデルの制約
+
+## 実装済みの機能（デモで確認）
+
+- JPY／ISOの独立したワークフロー。ユーロ円債はJPY側（建て通貨で分類）
+- オファーExcelの見出し判定と共通形式への変換（元ファイル・シート・行番号を保持）
+- ISINによる銘柄属性の取得（取得関数を引数で差し替え）と、既存関数による入力検証
+- JPY OIS ASW、JGBスプレッド、自国通貨OIS ASW、円換算ASW
+- 評価日と市場日の照合（別の日付のデータで補わない）、受渡日の一致確認
+- 結果のExcel出力（JPY／ISO別、元のオファーExcelは上書きしない）
+
+## 未対応の商品
+
+| 商品 | 扱い |
+|---|---|
+| 変動利付債 | 計算せず `未対応` と理由を出力。固定利付債として代用しない |
+| 期限前償還条項付き（コーラブル等） | 計算せず `未対応` と理由を出力。最終償還日とFirst Call日は別項目で保持 |
+| 満期一括償還以外、償還額100以外 | 現在の計算関数の対象外 |
+
+## 計算条件（現段階の仮定を含む）
+
+| 条件 | 内容 |
+|---|---|
+| 評価日 | オファー日＝各市場データの市場日。不一致・不足は別の日付で補わない |
+| 受渡日 | 既存ASW関数は債券の受渡日を開始日とするため、オファー受渡日と一致した行だけ計算 |
+| 計算終期 | 最終償還日（固定利付・満期一括・償還額100） |
+| ASW翌日物レッグ | 半年払い・支払ラグ0（**デモの仮定**。`pricing_settings_CURIE()` で変更可） |
+| JGB複利利回り | クリーン単価、同じ受渡日、利払・複利とも年2回。残存年数は満年数＋端数ACT/365 |
+
+## 円換算ASWの簡易モデルの制約
+
+既存の `compute_asset_swap_basis_JPY()` は、円担保・元本固定・開始日と満期に元本交換で、
+満期に対応するベーシス1点（気配を補間した値）から外貨割引の一定スプレッドを校正する簡易モデルである。
+ベーシスの補間を加えても、CCSの期間構造全体を校正したモデルではない。
+MtMリセット型CCS、FXスポットの受渡日とASW開始日がずれる場合のFXスワップ調整、取引費用、
+クオント調整、信用・資本・資金調達の調整は含まない。
+
+# 実データへ差し替える方法
+
+計算処理は変えず、ワークフロー関数の引数を差し替える。
+
+| 引数 | JPY | ISO | 差し替える内容 |
+|---|:-:|:-:|---|
+| `offer_path` | ○ | ○ | 実際のオファーExcel（JPYとISOは別ファイル） |
+| `offer_settings` | ○ | ○ | `offer_import_settings_CURIE(sheet =, header_row =, column_map =, currency =)` |
+| `ois_path` ／ `ois_paths` | ○ | ○ | OISのテキストファイル（ISOは通貨ごとに複数可。JPYのOISも渡す） |
+| `ois_settings` | ○ | ○ | `text_import_settings_CURIE(delim =, encoding =, column_map =)` |
+| `jgb_path` ／ `jgb_settings` | ○ | | JGB時価ファイル（単価と利回り計算に必要な属性） |
+| `basis_path` ／ `basis_settings` | | ○ | 対JPY通貨ベーシスの市場データ |
+| `fx_path` ／ `fx_settings` | | ○ | FXスポット（外貨1単位当たりの円） |
+| `valuation_date` | ○ | ○ | 評価日（オファー日・市場日と一致させる） |
+| `attribute_fetcher` | ○ | ○ | Aladdin APIから属性を取得する関数（仕様の提示後に実装。返す列は `R/z0_utility/attributes.R`） |
+| `pricing_settings` | ○ | ○ | ASW翌日物レッグの実取引条件が決まったら変更 |
+| `output_path` ／ `work_dir` | ○ | ○ | 出力Excelと作業フォルダ（入力ファイルと同じパスは指定できない） |
+
+実データ用の設定の雛形は `config/settings_example.R` にある。認証情報はリポジトリに含めない。
+
+# 実行環境
+
+```{r}
+#| label: environment
+jpy$environment$environment |>
+  dplyr::transmute(項目 = .data$item, 値 = .data$value, 備考 = .data$note) |>
+  flextable_CURIE(widths = c(項目 = 2, 値 = 2.8, 備考 = 3.6), caption = "使用したR・パッケージの版")
+
+jpy$environment$gaussquant_check |>
+  dplyr::summarise(関数の数 = dplyr::n(), ソース版と一致 = sum(.data$identical)) |>
+  dplyr::mutate(dplyr::across(dplyr::everything(), as.character)) |>
+  flextable_CURIE(caption = "GaussQuant：使用関数のインストール済み版とソース版の照合")
+```
+
+参考資料：`LagrangeFinance/docs/CURIE_Mockup_Overview.pdf`（全体像）、
+`LagrangeFinance/docs/asw_offer_sheet_spec.qmd`（ASW・オファーシートの仕様）、
+CURIEの `docs/development_plan.md`、`docs/spec_differences.md`。

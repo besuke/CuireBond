@@ -1,11 +1,11 @@
-# 検証済みオファーの価格計算（計算のみ。Excel出力は R/A1_offer_sheet/write_offer_results_excel.R）。
+# 検証済みオファーの価格計算（計算のみ。Excel出力は R/a1_offer_sheet/write_offer_results_excel.R）。
 #
 # 使う既存関数
-# - OISカーブ   : instance_swap_curve()（R/Z0_utility/lagrange/instance_swap_curve.R）
-# - 自国ASW     : compute_asset_swap_ISO()（R/Z0_utility/lagrange/compute_asset_swap_ISO.R）
-# - 円換算ASW   : compute_asset_swap_basis_JPY()（R/Z0_utility/lagrange/compute_asset_swap_basis_JPY.R）
+# - OISカーブ   : instance_swap_curve()（R/z0_utility/lagrange/instance_swap_curve.R）
+# - 自国ASW     : compute_asset_swap_ISO()（R/z0_utility/lagrange/compute_asset_swap_ISO.R）
+# - 円換算ASW   : compute_asset_swap_basis_JPY()（R/z0_utility/lagrange/compute_asset_swap_basis_JPY.R）
 # - 債券の生成  : GaussQuant::fixed_rate_bond_GQL()、GaussQuant::day_counter_GQL()
-# - 円債の利回り: GaussQuant::bond_compound_yield_from_price_YEN_GQL()（R/Z0_utility/market_data_import.R 経由）
+# - 円債の利回り: GaussQuant::bond_compound_yield_from_price_YEN_GQL()（R/z0_utility/market_data_import.R 経由）
 #
 # 計算条件
 # - 評価日 = オファー日 = 各市場データの市場日。日付が違うデータでは補わない

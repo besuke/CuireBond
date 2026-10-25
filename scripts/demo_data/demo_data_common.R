@@ -8,7 +8,7 @@ make_test_isin_CURIE <- function(body) paste0(toupper(body), isin_check_digit_CU
 
 # 債券生成の規約（通貨別）。LagrangeFinance のサンプル（sample_bond_asset_swap.R）と同じ値。
 # day_count は GaussQuant::day_counter_GQL() の名前（ActualActual_Bond は ISMA と同じ規約）。
-# calendar は R/A1_offer_sheet/compute_offer_pricing.R の calendar_from_name_CURIE() の名前。
+# calendar は R/a1_offer_sheet/compute_offer_pricing.R の calendar_from_name_CURIE() の名前。
 demo_bond_conventions_CURIE <- function() {
   tibble::tribble(
     ~currency, ~day_count,            ~calendar,                     ~settlement_days,

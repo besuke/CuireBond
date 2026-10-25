@@ -2,7 +2,7 @@
 # 当面はインストール済み版を使う。版番号が違っても、CURIEが使う関数の中身が
 # ソース版と一致していることを確認できた範囲で進める。
 
-# CURIEと移植関数（R/Z0_utility/lagrange/）が呼ぶGaussQuantの関数（内部の補助関数を含む）
+# CURIEと移植関数（R/z0_utility/lagrange/）が呼ぶGaussQuantの関数（内部の補助関数を含む）
 .curie_gaussquant_functions <- c(
   "fixed_rate_bond_GQL", "day_counter_GQL", "date_GQL", "iso_GQL", "set_eval_date_GQL",
   "safe_iso_GQH", "leg_to_cashflow_tbl_GQL", "cashflow_standardise_GQL",

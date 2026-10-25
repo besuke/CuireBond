@@ -11,6 +11,14 @@
 /output/*
 !/output/.gitkeep
 
+# Quarto の生成物（HTML・補助フォルダ・作業ファイル）。QMD本体は管理対象
+*.html
+*_files/
+.quarto/
+/.quarto/
+*.knit.md
+*.rmarkdown
+
 # APIキー・認証情報（環境変数や個人用設定に置き、コミットしない）
 .Renviron
 .env

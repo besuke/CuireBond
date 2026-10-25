@@ -1,4 +1,4 @@
-# 計算結果のExcel出力（出力のみ。計算は R/A1_offer_sheet/compute_offer_pricing.R）。
+# 計算結果のExcel出力（出力のみ。計算は R/a1_offer_sheet/compute_offer_pricing.R）。
 # 元のオファー情報に、銘柄属性・入力検証・計算結果・使用した市場データを付けて書き出す。
 # JPYとISOは別のExcelに出力する。元のオファーExcelと同じパスには書かない。
 # スプレッドの単位はすべてbp（列名の末尾 _bp）。利回りは%（_pct）。

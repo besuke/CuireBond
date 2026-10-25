@@ -1,5 +1,5 @@
 # 市場データの読込と前処理（FXスポット、通貨ベーシス、JGB時価→複利利回り）。
-# OIS気配は移植した import_market_data()（R/Z0_utility/lagrange/import_data.R）で読む（R/Z0_utility/import_settings.R）。
+# OIS気配は移植した import_market_data()（R/z0_utility/lagrange/import_data.R）で読む（R/z0_utility/import_settings.R）。
 # どのファイルも取込設定（text_import_settings_CURIE）で区切り文字・文字コード・列名を指定できる。
 # 取得時刻の列 quote_time は任意。あれば出力へ残す。
 

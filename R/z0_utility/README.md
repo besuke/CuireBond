@@ -1,4 +1,4 @@
-# Z0_utility：共通関数
+# z0_utility：共通関数
 
 各フェーズ（A／B）から共通に使う関数。GaussQuant と QuantLib はパッケージとして利用し、関数をコピーしない。
 
@@ -16,3 +16,4 @@
 | `bond_build.R` | 銘柄属性から固定利付債を生成（GaussQuant） |
 | `curve_build.R` | 評価日の気配からOISカーブを構築（移植した `instance_swap_curve()`） |
 | `environment_info.R` | 実行環境とGaussQuant（インストール済み版とソース版）の照合 |
+| `report_format.R` | 表示用の整形（桁数・日付・欠損と未計算の区別、flextable の共通書式）。計算はしない |

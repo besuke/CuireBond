@@ -29,7 +29,7 @@ pricing_settings <- pricing_settings_CURIE(asw_payment_frequency = "Semiannual",
 
 # ---- 銘柄属性の取得関数 ------------------------------------------------------
 # Aladdin APIの仕様・接続情報は未提示。仕様が決まるまで、この関数は実行すると止まる。
-# 返す列は R/Z0_utility/attributes.R の .attribute_columns_required_CURIE を参照。
+# 返す列は R/z0_utility/attributes.R の .attribute_columns_required_CURIE を参照。
 attribute_fetcher_aladdin <- function(isin, valuation_date) {
   # 認証情報の例：Sys.getenv("ALADDIN_API_TOKEN")（値は .Renviron に置き、コミットしない）
   stop("Aladdin APIの属性取得は未実装です（API仕様の提示後に実装）。", call. = FALSE)

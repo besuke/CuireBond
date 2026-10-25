@@ -41,6 +41,36 @@ source("scripts/run_demo_checks.R", encoding = "UTF-8")  # 両方＋別パス・
 
 架空のデモデータを `data/demo/` に作り、結果を `output/` に出力する。
 
+## A1 POC（Quarto）
+
+`docs/A1_offer_sheet_POC.qmd` は、既存のA1ワークフローを実際に実行し、入力・計算条件・結果・制約を
+HTMLで確認するPOC。計算はA1の関数をそのまま呼び出し、表はワークフロー関数の戻り値から flextable で作る
+（出力Excelは読み直さない）。データは架空のデモデータ。
+
+```powershell
+quarto render C:/AnalyticFin/Projects/CURIE/docs/A1_offer_sheet_POC.qmd
+```
+
+HTMLは自己完結型で、QMDと同じフォルダに出力される。デモ入力は `data/demo_poc/`、出力Excelは `output/poc/` に作る。
+
+**CURIEルートの指定**（優先順位の高い順）：
+
+1. Quarto の params：`quarto render <QMD> -P curie_root:C:/AnalyticFin/Projects/CURIE`
+2. 環境変数：`$env:CURIE_ROOT = "C:/AnalyticFin/Projects/CURIE"`
+3. QMDの場所の上位フォルダから、`CURIE.Rproj` と `R/load_CURIE.R` のあるフォルダを探索
+4. 作業ディレクトリの上位フォルダから同様に探索
+
+CURIE内の別フォルダへ移した場合は、そのまま `quarto render` で動く（3で見つかる）。CURIEの外へ移した場合は、
+1か2で指定する。指定したフォルダがCURIEルートでない場合と、どこにも見つからない場合は、指定方法を示して停止する。
+
+注意：QMDを置いたフォルダの上位に別の `_quarto.yml` がある場合、Quarto はそのプロジェクトの一部として扱う
+（例：ユーザーフォルダ直下に `_quarto.yml` があると、その配下ではレンダリングが失敗する）。CURIEの外へ移すときは、
+上位に `_quarto.yml` がないフォルダに置く。
+
+実データへの差し替えは、POCの「実データへ差し替える方法」の表と、`config/settings_example.R` を参照
+（`offer_path`、`ois_path(s)`、`jgb_path`、`basis_path`、`fx_path`、各取込設定、`valuation_date`、
+`attribute_fetcher`、`pricing_settings`、`output_path` を差し替える）。
+
 ## 本体の呼び出し例
 
 ```r
@@ -57,24 +87,24 @@ workflows_offer_sheet_JPY(
 )
 ```
 
-属性取得関数が返す列は `R/Z0_utility/attributes.R` を参照。
+属性取得関数が返す列は `R/z0_utility/attributes.R` を参照。
 
 ## フォルダ構成
 
 ```
 R/
   load_CURIE.R        本体の読込（Z0 → A1）
-  A1_offer_sheet/     Phase 1：オファーシート作成
-  A2_valuation/       Phase 1：時価適正性の検証（未実装。READMEのみ）
-  A3_credit_reports/  Phase 1：クレジットレポート読込・紐づけ（未実装。READMEのみ）
-  A4_daily_report/    Phase 1：日次レポート・目玉オファー（未実装。READMEのみ）
-  B1_fund_strategy/   Phase 2：ファンド戦略・制約条件の読込（未実装。READMEのみ）
-  B2_rebalancing/     Phase 2：ポートフォリオ入れ替え提案（未実装。READMEのみ）
-  B3_aladdin_orders/  Phase 2：Aladdin APIによる発注（未実装。READMEのみ）
-  Z0_utility/         共通関数（lagrange/ に Part II の移植関数）
+  a1_offer_sheet/     Phase 1：オファーシート作成
+  a2_valuation/       Phase 1：時価適正性の検証（未実装。READMEのみ）
+  a3_credit_reports/  Phase 1：クレジットレポート読込・紐づけ（未実装。READMEのみ）
+  a4_daily_report/    Phase 1：日次レポート・目玉オファー（未実装。READMEのみ）
+  b1_fund_strategy/   Phase 2：ファンド戦略・制約条件の読込（未実装。READMEのみ）
+  b2_rebalancing/     Phase 2：ポートフォリオ入れ替え提案（未実装。READMEのみ）
+  b3_aladdin_orders/  Phase 2：Aladdin APIによる発注（未実装。READMEのみ）
+  z0_utility/         共通関数（lagrange/ に Part II の移植関数）
 scripts/              デモの生成（demo_data/）と実行スクリプト
 config/               実データ用の設定のサンプル
-docs/                 開発計画、仕様書との差分
+docs/                 開発計画、仕様書との差分、A1 POC（A1_offer_sheet_POC.qmd）
 data/                 入力データ（Git管理対象外）
 output/               出力結果（Git管理対象外）
 ```
@@ -89,12 +119,13 @@ R 4.6.0（動作確認環境：Windows 11、R 4.6.0 ucrt）。
 |---|---|---|
 | dplyr, purrr, tibble, tidyr, stringr, readr, readxl | データ処理・取込（tidyverse） | CRAN |
 | writexl | Excel出力 | CRAN |
+| flextable, withr | A1 POC（Quarto）の表示 | CRAN |
 | collapse | 移植した `merge_offer_bond_attributes()` が使用 | CRAN |
 | QuantLib | カーブ・ASW計算 | R用QuantLibバインディング |
 | GaussQuant | 債券生成・円債利回り | GitHub `besuke/GaussQuant` |
 
 ```r
-install.packages(c("tidyverse", "writexl", "collapse"))
+install.packages(c("tidyverse", "writexl", "collapse", "flextable", "withr"))   # POCには Quarto も必要
 ```
 
 QuantLib と GaussQuant は別途導入する。実データ用の設定は `config/settings_example.R` を
@@ -106,14 +137,14 @@ Windowsでスマートアプリコントロールが有効な場合、CRANの一
 
 GaussQuant は当面インストール済み版を使う。2026-10-25 時点で、インストール済み版は
 2026.9.12.1（GitHub `fa721b2`）、ソース版（`C:/AnalyticFin/Projects/GaussQuant`）は 2026.06.18.1 で、
-版番号は異なる。CURIEが使う関数（`R/Z0_utility/environment_info.R` の一覧）は本体・引数ともに一致することを
+版番号は異なる。CURIEが使う関数（`R/z0_utility/environment_info.R` の一覧）は本体・引数ともに一致することを
 ワークフローの実行ごとに確認し、Excelの「実行環境」「GaussQuant照合」シートに残す。
 
 パッケージを入れ替え・更新した後は、Rセッションを再起動してから実行する。
 
 ## 次期機能（未実装）：オファーシートとクレジットレポートのURL連携
 
-開発計画の A3（[docs/development_plan.md](docs/development_plan.md)、`R/A3_credit_reports/`）の一部。
+開発計画の A3（[docs/development_plan.md](docs/development_plan.md)、`R/a3_credit_reports/`）の一部。
 出力Excelのオファー行から、対応するクレジットレポートを開けるようにする。
 
 - **銘柄単位**：ISINをキーに、銘柄とクレジットレポートのURLを関連付ける。

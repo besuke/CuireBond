@@ -11,14 +11,14 @@ A は Phase 1、B は Phase 2、Z0 は共通関数を表す。番号は `R/` の
 
 | 番号 | フォルダ | 内容 | 状態 |
 |---|---|---|---|
-| A1 | `R/A1_offer_sheet/` | オファーシート作成 | ［デモ実装済み・本番連携は未完了］ |
-| A2 | `R/A2_valuation/` | 時価適正性の検証（当社Fair Valueと ICE／DIR時価・オファー価格の乖離） | ［構想］ |
-| A3 | `R/A3_credit_reports/` | クレジットレポート読込・紐づけ | ［構想］ |
-| A4 | `R/A4_daily_report/` | 日次レポート・目玉オファー | ［構想］ |
-| B1 | `R/B1_fund_strategy/` | ファンド戦略・制約条件の読込 | ［構想］ |
-| B2 | `R/B2_rebalancing/` | ポートフォリオ入れ替え提案（保有の取得を含む） | ［構想］ |
-| B3 | `R/B3_aladdin_orders/` | Aladdin APIによる発注（承認後の送信、状態管理） | ［構想］ |
-| Z0 | `R/Z0_utility/` | 共通関数（Part IIの移植関数、取込・変換・検証・日付・属性取得・カーブ・債券計算） | ［デモ実装済み・本番連携は未完了］A1が使う範囲 |
+| A1 | `R/a1_offer_sheet/` | オファーシート作成 | ［デモ実装済み・本番連携は未完了］ |
+| A2 | `R/a2_valuation/` | 時価適正性の検証（当社Fair Valueと ICE／DIR時価・オファー価格の乖離） | ［構想］ |
+| A3 | `R/a3_credit_reports/` | クレジットレポート読込・紐づけ | ［構想］ |
+| A4 | `R/a4_daily_report/` | 日次レポート・目玉オファー | ［構想］ |
+| B1 | `R/b1_fund_strategy/` | ファンド戦略・制約条件の読込 | ［構想］ |
+| B2 | `R/b2_rebalancing/` | ポートフォリオ入れ替え提案（保有の取得を含む） | ［構想］ |
+| B3 | `R/b3_aladdin_orders/` | Aladdin APIによる発注（承認後の送信、状態管理） | ［構想］ |
+| Z0 | `R/z0_utility/` | 共通関数（Part IIの移植関数、取込・変換・検証・日付・属性取得・カーブ・債券計算） | ［デモ実装済み・本番連携は未完了］A1が使う範囲 |
 
 デモの生成・実行スクリプトは `scripts/` に置き、本体（`R/`）とは分ける。
 
@@ -28,7 +28,7 @@ CURIEは、債券運用の分析・入れ替え提案・発注支援を行う。
 
 - 数値計算、評価、最適化、制約判定はRで行う。
 - AI（Claudeエージェント）は、クレジット資料の読解・整理、数値結果の説明、提案理由の文章化を担う。AIは数値を計算・変更しない。
-- LagrangeFinance の Part II の関数（`R/Z0_utility/lagrange/` に移植）と GaussQuant・QuantLib を利用し、同じ計算を重複実装しない。
+- LagrangeFinance の Part II の関数（`R/z0_utility/lagrange/` に移植）と GaussQuant・QuantLib を利用し、同じ計算を重複実装しない。
 - 入力データ、計算条件、出典、結果を追跡できるようにする（ファイル名・市場日・取得時刻・識別子・計算状態を出力に残す）。
 - 未確定の計算条件は推測で決めず、未計算として理由を残す。
 - 外部システム（Aladdin等）のエンドポイント・項目名・認証は、仕様の提示前に推測で実装しない。
@@ -45,7 +45,7 @@ CURIEは、債券運用の分析・入れ替え提案・発注支援を行う。
 | ISOワークフロー（円以外の建て通貨）：自国通貨OIS ASW、円換算ASW | `workflows_offer_sheet_ISO()` |
 | 入力ファイル・評価日・出力先・取込設定を関数の引数で指定 | `offer_import_settings_CURIE()`、`text_import_settings_CURIE()` |
 | オファーExcelの形式変換（見出し判定、元ファイル・行番号の保持） | `convert_offer_sheet_CURIE()` |
-| 銘柄属性の取得（ISINキー、取得関数を引数で差替え。現在はデモ取得関数） | `R/Z0_utility/attributes.R` |
+| 銘柄属性の取得（ISINキー、取得関数を引数で差替え。現在はデモ取得関数） | `R/z0_utility/attributes.R` |
 | 未対応商品の識別（変動利付・期限前償還条項付き等。計算はせず理由を出力） | `calculation_end_CURIE()` |
 | 結果のExcel出力（JPY／ISO別） | `write_offer_results_excel_CURIE()` |
 

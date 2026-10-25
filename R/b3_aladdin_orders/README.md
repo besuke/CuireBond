@@ -1,4 +1,4 @@
-# B3_aladdin_orders：Aladdin APIによる発注（Phase 2）［未実装］
+# b3_aladdin_orders：Aladdin APIによる発注（Phase 2）［未実装］
 
 B2の入れ替え提案から発注案を作り、所定の承認を経た注文だけをAladdinの発注APIで送信する。
 
