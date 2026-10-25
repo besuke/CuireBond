@@ -23,10 +23,12 @@ value_status_label_c1 <- function(x) {
 trs_field_dictionary_c1 <- function() {
   tibble::tribble(
     ~field,                                   ~section,   ~label_ja,                              ~type,     ~required,
+    # 商品の種類（そもそもTRSか。文書が自分を何の取引と書いているか）
+    "trade.product_type",                     "取引",     "商品の種類（TOTAL_RETURN_SWAP／OTHER）", "code",  TRUE,
     # 取引の基本条件
     "trade.dealer",                           "取引",     "証券会社",                             "text",    TRUE,
     "trade.dealer_reference",                 "取引",     "証券会社の取引番号",                   "text",    FALSE,
-    "trade.trade_date",                       "取引",     "約定日",                               "date",    TRUE,
+    "trade.trade_date",                       "取引",     "取引実行日（約定日）",                 "date",    TRUE,
     "trade.effective_date",                   "取引",     "効力発生日（開始日）",                 "date",    TRUE,
     "trade.termination_date",                 "取引",     "終了日",                               "date",    TRUE,
     "trade.notional_amount",                  "取引",     "想定元本",                             "number",  TRUE,

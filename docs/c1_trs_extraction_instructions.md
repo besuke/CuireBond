@@ -55,6 +55,7 @@ TRSの価格計算はしません。**値は必ずPDFの記載を根拠にし、
 
 | 項目ID | 内容 | 値の型・コード |
 |---|---|---|
+| `trade.product_type` | 商品の種類。文書が自分を何の取引と書いているか（例「Transaction Type: Total Return Swap」）。TRSでなければ `OTHER` とし、note に原文の取引名を書く | `TOTAL_RETURN_SWAP`／`OTHER` |
 | `trade.dealer` | 証券会社 | 文字 |
 | `trade.dealer_reference` | 証券会社の取引番号 | 文字 |
 | `trade.trade_date` | 約定日 | 日付 |

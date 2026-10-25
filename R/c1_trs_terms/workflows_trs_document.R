@@ -17,6 +17,67 @@
 #   final/              照合後の最終成果物（確認表Excel、FpML、検証結果）
 #   run_summary.json    実行の記録（状態、保存先、理由）
 
+# コンソールに表示する主要項目（日付・参照レグ・参照金利・カレンダー。金額の項目は含めない）
+.key_fields_c1 <- c(
+  "trade.product_type",
+  "trade.trade_date", "trade.effective_date", "trade.termination_date", "return.final_valuation_date",
+  "return.underlyer_type", "return.underlyer_name", "return.underlyer_id", "return.underlyer_issuer", "return.return_type",
+  "funding.floating_rate_index", "funding.index_tenor", "funding.reset_relative_to", "funding.fixing_offset_days",
+  "return.valuation_calendar", "funding.fixing_calendar", "funding.payment_calendar",
+  "funding.fixing_business_day_convention", "funding.payment_business_day_convention"
+)
+
+# 項目ごとに「取得できたもの」「取得できなかったもの」をまとめる（コンソール表示・確認用）
+# fields：表示する項目（既定は主要項目。NULLなら全項目）
+summarize_terms_c1 <- function(result, fields = .key_fields_c1) {
+  dict <- trs_field_dictionary_c1()
+  order_of <- function(x) if (is.null(fields)) x else x |>
+    dplyr::filter(.data$field %in% fields) |> dplyr::arrange(match(.data$field, fields))
+  dict <- order_of(dict)
+  table <- result$final$table
+  if (is.null(table)) {
+    # AIの抽出結果が1つもない：すべて取得できなかった（AIの状態を理由にする）
+    states <- if (is.null(result$collected)) "処理が失敗した" else
+      paste(names(result$collected), purrr::map_chr(result$collected, "state"), sep = "：", collapse = "／")
+    return(dict |> dplyr::transmute(区分 = .data$section, 項目 = .data$label_ja,
+                                    必須 = dplyr::if_else(.data$required, "必須", "任意"),
+                                    結果 = "取得できなかった", 値 = NA_character_, ページ = NA_character_, 理由 = states))
+  }
+  order_of(table) |>
+    dplyr::mutate(
+      value = dplyr::coalesce(.data$confirmed_value, .data$extracted_value),
+      結果 = dplyr::if_else(is.na(.data$value), "取得できなかった", "取得できた"),
+      理由 = dplyr::case_when(
+        !is.na(.data$confirmed_value) ~ paste0("確定（", .data$confirmed_by, "）"),
+        !is.na(.data$value) ~ paste0("要確認：", .data$judgement_reason),
+        .data$status == "空欄" ~ "原文が空欄（未記入）",
+        .data$status == "選択肢（未確定）" ~ "原文が選択肢のまま（未確定）",
+        .data$status == "記載なし" ~ "原文に記載なし",
+        .data$status == "不一致" ~ "AIの値が異なる",
+        .default = .data$judgement_reason
+      )
+    ) |>
+    dplyr::transmute(区分 = .data$section, 項目 = .data$label_ja, 必須 = dplyr::if_else(.data$required, "必須", "任意"),
+                     結果 = .data$結果, 値 = .data$value, ページ = dplyr::na_if(.data$page, ""), 理由 = .data$理由)
+}
+
+# そもそもTRSか：AIが読んだ商品の種類（trade.product_type）と根拠を返す。推測では判定しない
+# answer：「はい」「いいえ」「判定できない」
+trs_product_check_c1 <- function(result) {
+  row <- result$final$table
+  if (!is.null(row)) row <- dplyr::filter(row, .data$field == "trade.product_type")
+  if (is.null(row) || !nrow(row)) {
+    return(list(answer = "判定できない", value = NA_character_, page = NA_character_, quote = NA_character_,
+                reason = "AIの抽出結果に商品の種類がない"))
+  }
+  value <- dplyr::coalesce(row$confirmed_value, row$extracted_value)[1]
+  answer <- dplyr::case_when(is.na(value) ~ "判定できない",
+                             toupper(value) == "TOTAL_RETURN_SWAP" ~ "はい",
+                             .default = "いいえ")
+  list(answer = answer, value = value, page = dplyr::na_if(row$page[1], ""), quote = dplyr::na_if(row$quote[1], ""),
+       reason = if (!is.na(row$confirmed_value[1])) "確定" else paste0("要確認：", row$judgement_reason[1]))
+}
+
 .document_id_c1 <- function(file_name) {
   id <- tools::file_path_sans_ext(file_name)
   gsub("[^A-Za-z0-9_-]", "_", id)
@@ -29,13 +90,19 @@ workflows_trs_document_c1 <- function(
     overrides_path = NULL, notifier = NULL, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""),
     instruction_path = file.path("docs", "c1_trs_extraction_instructions.md")) {
   upload_input <- match.arg(upload_input)
+  pasted_source <- source
+  source <- strip_tracking_params_c1(source)   # utm_ で始まる追跡用パラメータを除く（元のURLは記録に残す）
   started <- format(Sys.time(), "%Y%m%d_%H%M%S")
   run_dir <- NULL
+  # いま何をしているかをコンソールに表示する
+  step <- function(...) message(format(Sys.time(), "%H:%M:%S"), " [c1] ", ...)
   if (is.null(notifier)) notifier <- make_demo_notifier_c1(file.path(run_root, "notifications.jsonl"))
   result <- tryCatch({
     # 1. 取得（URLならダウンロード、ローカルなら複製）
+    step("1/5 PDFを取得しています：", source)
     tmp_intake <- file.path(run_root, paste0("_intake_", started))
     acquired <- acquire_trs_document_c1(source, tmp_intake)
+    step("    取得しました：", acquired$file_name, "（", acquired$pages, "ページ、SHA-256 ", substr(acquired$sha256, 1, 12), "…）")
     document_id <- .document_id_c1(acquired$file_name)
     run_dir <- file.path(run_root, paste0(document_id, "_", started))
     dir.create(run_dir, recursive = TRUE, showWarnings = FALSE)
@@ -65,8 +132,10 @@ workflows_trs_document_c1 <- function(
     document$stored_path <- file.path(pdf_dir, acquired$file_name)
 
     # 3. 独立読解（AIごとのフォルダ）
+    step("2/5 ClaudeとCopilotへの依頼文を作っています")
     agent_dirs <- c(claude = file.path(run_dir, "agents", "claude"), copilot = file.path(run_dir, "agents", "copilot"))
     purrr::iwalk(agent_dirs, \(d, a) prepare_agent_package_c1(a, document, sp_item, d, instruction_path))
+    if (run_claude) step("3/5 Claude Code にPDFを読ませています（数分かかります。この間は表示が止まります）")
     claude_run <- if (run_claude) run_claude_agent_c1(agent_dirs[["claude"]], source) else
       tibble::tibble(agent = "claude", exit_status = NA_integer_, started_at = NA_character_, seconds = NA_real_,
                      cli_version = NA_character_)
@@ -74,7 +143,10 @@ workflows_trs_document_c1 <- function(
       purrr::walk(.agent_files_c1, \(f) if (file.exists(file.path(copilot_dir, f)))
         file.copy(file.path(copilot_dir, f), file.path(agent_dirs[["copilot"]], f), overwrite = TRUE))
     }
+    if (run_claude) step("    Claude が終わりました（", claude_run$seconds, "秒、費用 約", round(claude_run$cost_usd, 2), " USD）")
+    step("4/5 AIの出力を取り込み、照合しています")
     collected <- purrr::imap(agent_dirs, \(d, a) collect_agent_outputs_c1(a, d, pdf_dir, xsd_path))
+    purrr::iwalk(collected, \(x, a) step("    ", a, "：", x$state))
     available <- purrr::compact(purrr::map(collected, "extraction"))
 
     # 4. 照合 → 最終成果物（両AIの出力がそろわなければ、照合は「片方のみ」となり確認待ち）
@@ -98,6 +170,7 @@ workflows_trs_document_c1 <- function(
     status <- if (!is.null(final) && all(final$documents$fpml_final) && !length(missing_agents)) "完了" else "要確認"
 
     # 5. 成果物を SharePoint に保存し、通知する
+    step("5/5 成果物を保存し、通知しています（判定：", status, "）")
     out_files <- c(list.files(final_dir, recursive = TRUE, full.names = TRUE),
                    list.files(file.path(run_dir, "agents"), recursive = TRUE, full.names = TRUE) |>
                      purrr::discard(\(f) grepl("/pdf/|document[.]pdf$", f)))
@@ -106,7 +179,8 @@ workflows_trs_document_c1 <- function(
       client$upload(f, file.path(sharepoint$folder, "output", basename(run_dir), rel))
     }) |> purrr::list_rbind()
     summary <- list(
-      status = status, document_id = document_id, source = source, run_dir = normalizePath(run_dir, winslash = "/"),
+      status = status, document_id = document_id, source = source, pasted_source = pasted_source,
+      run_dir = normalizePath(run_dir, winslash = "/"),
       input = list(file = acquired$file_name, sha256 = acquired$sha256, retrieved_at = acquired$retrieved_at,
                    method = acquired$method, sharepoint_url = sp_item$url, sharepoint_item_id = sp_item$item_id,
                    sharepoint_connection = sp_item$connection),

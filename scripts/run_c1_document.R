@@ -2,7 +2,7 @@
 # CURIEプロジェクトの最上位フォルダで実行する。
 #
 #   Rscript scripts/run_c1_document.R                     # 読むべきURLをコンソールに貼る
-#   Rscript scripts/run_c1_document.R <URLまたはファイルのパス> [--no-claude] [--copilot-dir=<フォルダ>]
+#   Rscript scripts/run_c1_document.R <URLまたはファイルのパス> [--no-claude] [--copilot-dir=<フォルダ>] [--show-fpml]
 #   source("scripts/run_c1_document.R", encoding = "UTF-8")   # RStudio／Positron（URLを貼る）
 #
 # AIには元のURL（またはファイル）を渡して自分で読ませる。読めなかった場合は「読めなかった」と記録して終える。
@@ -42,4 +42,41 @@ if (!is.null(res$summary)) {
     cat("Claude の費用（API料金換算の目安）：", round(res$summary$claude_run$cost_usd, 3), " USD\n", sep = "")
   }
   if (length(res$summary$reasons)) cat("理由：\n -", paste(res$summary$reasons, collapse = "\n - "), "\n")
+}
+
+# そもそもトータル・リターン・スワップか（文書自身の記載で判定。推測しない）
+trs <- trs_product_check_c1(res)
+cat("\n■ トータル・リターン・スワップか：", trs$answer, sep = "")
+if (!is.na(trs$page) || !is.na(trs$quote)) cat("（根拠 p.", trs$page, "「", trs$quote, "」）", sep = "")
+cat("　", trs$reason, "\n", sep = "")
+
+# 項目ごとの結果：取得できたもの／取得できなかったもの
+terms <- summarize_terms_c1(res)
+got <- dplyr::filter(terms, 結果 == "取得できた")
+missing <- dplyr::filter(terms, 結果 == "取得できなかった")
+cat("\n■ 取得できたもの（", nrow(got), "項目）\n", sep = "")
+print(dplyr::select(got, 区分, 項目, 値, ページ, 理由), n = Inf, width = Inf)
+cat("\n■ 取得できなかったもの（", nrow(missing), "項目）\n", sep = "")
+print(dplyr::select(missing, 区分, 項目, 必須, 理由), n = Inf, width = Inf)
+
+# FpML をコンソールにも表示するか（--show-fpml なら聞かずに表示）
+fpml_files <- res$final$fpml_files
+if (!is.null(fpml_files) && nrow(fpml_files)) {
+  show <- "--show-fpml" %in% args
+  if (!show) {
+    prompt <- "\nFpMLも表示しますか（Y/n）: "
+    ans <- if (interactive()) readline(prompt) else {
+      cat(prompt)
+      readLines(file("stdin"), n = 1L, warn = FALSE)
+    }
+    show <- length(ans) == 1L && toupper(trimws(ans)) %in% c("", "Y", "YES")
+  }
+  if (show) {
+    purrr::pwalk(fpml_files, function(kind, fpml_file, ...) {
+      cat("\n■ FpML（", kind, "）：", normalizePath(fpml_file, winslash = "/"), "\n", sep = "")
+      writeLines(readLines(fpml_file, encoding = "UTF-8", warn = FALSE))
+    })
+  }
+} else {
+  cat("\nFpMLは作られていません（AIの抽出結果がない）。\n")
 }

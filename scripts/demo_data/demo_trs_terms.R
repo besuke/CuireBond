@@ -72,6 +72,7 @@ write_demo_trs_pdf_c1 <- function(dir) {
 .demo_trs_truth_c1 <- function() {
   tibble::tribble(
     ~field,                                    ~value,                                   ~value_status, ~page, ~quote,
+    "trade.product_type",                      "TOTAL_RETURN_SWAP",                      "stated",      1L,    "Total Return Swap Confirmation",
     "trade.dealer",                            "DEMO Securities Co., Ltd.",              "stated",      1L,    "Dealer: DEMO Securities Co., Ltd.",
     "trade.dealer_reference",                  "DEMO-TRS-0001",                          "stated",      1L,    "Dealer Reference: DEMO-TRS-0001",
     "trade.trade_date",                        "2026-10-06",                             "stated",      1L,    "Trade Date: 2026-10-06",

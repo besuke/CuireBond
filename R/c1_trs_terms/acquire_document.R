@@ -5,6 +5,17 @@
 
 .is_url_c1 <- function(x) grepl("^https?://", x, ignore.case = TRUE)
 
+# URLから追跡用のパラメータ（utm_source など utm_ で始まるもの）を取り除く。ほかのパラメータは残す
+strip_tracking_params_c1 <- function(url) {
+  if (!.is_url_c1(url) || !grepl("?", url, fixed = TRUE)) return(url)
+  base <- sub("[?].*$", "", url)
+  fragment <- if (grepl("#", url, fixed = TRUE)) sub("^[^#]*", "", url) else ""
+  query <- sub("#.*$", "", sub("^[^?]*[?]", "", url))
+  params <- strsplit(query, "&", fixed = TRUE)[[1]]
+  params <- params[nzchar(params) & !grepl("^utm_", params, ignore.case = TRUE)]
+  paste0(base, if (length(params)) paste0("?", paste(params, collapse = "&")) else "", fragment)
+}
+
 # URLの末尾からファイル名を取る（?以降は除く）
 .file_name_from_source_c1 <- function(source) {
   name <- basename(sub("[?#].*$", "", source))

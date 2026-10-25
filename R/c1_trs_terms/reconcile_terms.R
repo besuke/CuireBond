@@ -68,6 +68,8 @@ reconcile_trs_terms_c1 <- function(fields, agents = c("claude", "copilot"),
       .by = c("document_id", "file", "field", "section", "label_ja", "type", "required")
     ) |>
     dplyr::mutate(
+      # 抽出JSONに行がない項目（指示書の版が古い等）は引用もない
+      quote_check = dplyr::if_else(.data$quote_check == "", "引用なし", .data$quote_check),
       status = dplyr::case_when(
         .data$n_values == 0L ~ value_status_label_c1(.data$source_status),
         single ~ "単独抽出",
