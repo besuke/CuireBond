@@ -1,6 +1,7 @@
 # 依存関係の確認と、移植したPart IIの関数（R/Z0_utility/lagrange/）の読込。
-# このファイルは確認対象のパッケージに頼らず、R標準の関数だけで書く。
+# パッケージの確認（check_packages_CURIE）は、確認対象のパッケージに頼らずR標準の関数だけで書く。
 # （tibble等が読めない環境でも、何が不足しているかを表示できるようにするため）
+# 移植関数の読込は、purrr を含む必要パッケージを確認した後に purrr で行う。
 #
 # R/Z0_utility/lagrange/ は LagrangeFinance/R から移植した関数で、計算ロジックは変更していない。
 # GaussQuant と QuantLib はパッケージとして利用し、関数はコピーしない。
@@ -41,6 +42,6 @@ load_lagrange_functions_CURIE <- function(files = .curie_lagrange_default, dir =
   unknown <- setdiff(files, names(.curie_lagrange_files))
   if (length(unknown)) stop("依存関係が未確認のファイルです: ", paste(unknown, collapse = ", "), call. = FALSE)
   check_packages_CURIE(unique(unlist(.curie_lagrange_files[files])))
-  for (f in files) sys.source(file.path(dir, f), envir = globalenv(), keep.source = FALSE)
+  purrr::walk(files, \(f) sys.source(file.path(dir, f), envir = globalenv(), keep.source = FALSE))
   invisible(file.path(dir, files))
 }

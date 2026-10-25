@@ -1,10 +1,11 @@
 # デモの入力ファイルをまとめて作り、パスとデモ属性取得関数を返す（本体のワークフローとは分離）。
 # CURIE本体（R/load_CURIE.R）を読んだ後に source() する。
 
-for (.f in c("demo_data_common.R", "demo_data_offers.R", "demo_data_master.R", "demo_data_market.R")) {
-  source(file.path("scripts", "demo_data", .f), encoding = "UTF-8")
-}
-rm(.f)
+# 読込先はグローバル環境（local = globalenv() で明示）。順序は common → offers → master → market
+purrr::walk(
+  c("demo_data_common.R", "demo_data_offers.R", "demo_data_master.R", "demo_data_market.R"),
+  \(f) source(file.path("scripts", "demo_data", f), encoding = "UTF-8", local = globalenv())
+)
 
 prepare_demo_inputs_CURIE <- function(dir = file.path("data", "demo"), marketdate = demo_marketdate_CURIE) {
   offers <- create_demo_offers_CURIE(file.path(dir, "offers"), marketdate)

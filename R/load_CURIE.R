@@ -3,7 +3,7 @@
 #
 # R/
 #   Z0_utility/       共通関数（Part IIから移植した関数、取込・変換・検証・属性取得・カーブ・債券計算）
-#   A1_offer_sheet/   Phase 1：オファーシート作成（実装済み）
+#   A1_offer_sheet/   Phase 1：オファーシート作成（デモ実装済み・本番連携は未完了）
 #   A2_valuation/     Phase 1：時価適正性の検証（未実装）
 #   A3_credit_reports/ Phase 1：クレジットレポート読込・紐づけ（未実装）
 #   A4_daily_report/  Phase 1：日次レポート・目玉オファー（未実装）
