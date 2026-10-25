@@ -183,7 +183,7 @@ convert_offer_sheet_CURIE <- function(path, sheet = NULL, header_row = NULL, col
 # 必須6列を先頭に置き、CURIEの追加列はその後ろに残す。
 write_offer_standard_CURIE <- function(offers, path) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  writexl::write_xlsx(
+  write_xlsx_CURIE(
     list(offers = dplyr::relocate(offers, dplyr::all_of(.required_offer_fields_CURIE))),
     path
   )

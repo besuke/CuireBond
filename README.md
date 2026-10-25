@@ -13,6 +13,7 @@
 | B1 | ファンド戦略・制約条件の読込 | 未実装 |
 | B2 | ポートフォリオ入れ替え提案 | 未実装 |
 | B3 | Aladdin APIによる発注 | 未実装 |
+| C1 | TRSターム条件の抽出結果 → 照合 → 確認表・FpML | デモ実装済み・本番連携は未完了（Aladdin用JSONは未実装） |
 | Z0 | 共通関数 | A1が使う範囲をデモ実装済み |
 
 A1 の本番連携で未完了の内容：
@@ -37,6 +38,7 @@ RStudio／Positron で `CURIE.Rproj` のフォルダを開き、Rコンソール
 source("scripts/run_demo_JPY.R", encoding = "UTF-8")     # JPYのみ
 source("scripts/run_demo_ISO.R", encoding = "UTF-8")     # ISOのみ
 source("scripts/run_demo_checks.R", encoding = "UTF-8")  # 両方＋別パス・別形式・日付不一致などの確認
+source("scripts/run_demo_c1_TRS.R", encoding = "UTF-8")  # C1：TRSターム条件の照合・確認表・FpML
 ```
 
 架空のデモデータを `data/demo/` に作り、結果を `output/` に出力する。
@@ -101,6 +103,7 @@ R/
   b1_fund_strategy/   Phase 2：ファンド戦略・制約条件の読込（未実装。READMEのみ）
   b2_rebalancing/     Phase 2：ポートフォリオ入れ替え提案（未実装。READMEのみ）
   b3_aladdin_orders/  Phase 2：Aladdin APIによる発注（未実装。READMEのみ）
+  c1_trs_terms/       C1：TRSターム条件の抽出結果の照合・確認表・FpML
   z0_utility/         共通関数（lagrange/ に Part II の移植関数）
 scripts/              デモの生成（demo_data/）と実行スクリプト
 config/               実データ用の設定のサンプル
@@ -110,6 +113,22 @@ output/               出力結果（Git管理対象外）
 ```
 
 各フォルダの役割・予定する入出力は、そのフォルダの README.md を参照。
+
+## Excelの共通書式
+
+CURIEが作るすべてのExcel（A1の結果・標準形式のオファー・デモのオファー・C1の確認表など）は、
+`R/z0_utility/excel_format.R` の `write_xlsx_CURIE()` で書き、次のフォントにする。
+
+- 英字・数字：**Cambria**
+- 日本語：**MS UI Gothic**
+
+日本語と英数字が同じセルに混在する場合は、文字種ごとの区間（リッチテキスト）に分けてフォントを付ける
+（例「テスト円債A 0.50% 2028/9」→「テスト円債」は MS UI Gothic、「A 0.50% 2028/9」は Cambria）。
+数値・日付・英数字だけのセルは Cambria。
+
+書式付きExcelのパッケージ openxlsx2 は、DLLが Windows のアプリケーション制御（スマートアプリコントロール）に
+阻止されて使えないため、writexl で書いた後に xlsx 内の XML（`styles.xml`・`sharedStrings.xml`）を
+xml2 で書き換えている。値・列構成は writexl だけで書いた場合と同じ。見出し行の太字はなし。
 
 ## 依存パッケージとセットアップ
 

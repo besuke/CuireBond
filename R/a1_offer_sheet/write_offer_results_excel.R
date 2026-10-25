@@ -125,7 +125,7 @@ write_offer_results_excel_CURIE <- function(workflow = c("JPY", "ISO"), pricing,
   # list列は書けないため、属性の記録は表の列だけにする
   attribute_sheet <- dplyr::select(attributes, dplyr::where(\(x) !is.list(x)))
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  writexl::write_xlsx(
+  write_xlsx_CURIE(
     c(
       list(
         "説明" = .notes_CURIE(workflow, results, pricing$settings),

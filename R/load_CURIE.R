@@ -18,9 +18,13 @@ load_lagrange_functions_CURIE()   # 移植したPart IIの関数（R/z0_utility/
 .curie_modules <- list(
   z0_utility = c("isin.R", "parse_utils.R", "import_settings.R", "market_data_import.R",
                  "interpolation.R", "bond_yield_YEN.R", "attributes.R", "bond_build.R",
-                 "curve_build.R", "environment_info.R", "report_format.R"),
+                 "curve_build.R", "environment_info.R", "report_format.R", "excel_format.R"),
   a1_offer_sheet = c("convert_offer_sheet.R", "spread_inputs.R", "validate_offer_worksheet.R",
                      "compute_offer_pricing.R", "write_offer_results_excel.R", "workflows_offer_sheet.R",
-                     "report_tables.R")
+                     "report_tables.R"),
+  # c1 は jsonlite・xml2・pdftools・openssl を使う（関数を呼んだときに必要）
+  c1_trs_terms = c("trs_fields.R", "read_extractions.R", "verify_quotes.R", "reconcile_terms.R",
+                   "fpml_trs.R", "fpml_validate.R", "workflows_trs_terms.R", "acquire_document.R",
+                   "sharepoint.R", "agents.R", "notify.R", "workflows_trs_document.R")
 )
 purrr::iwalk(.curie_modules, \(files, dir) purrr::walk(files, \(f) source(file.path("R", dir, f), encoding = "UTF-8")))

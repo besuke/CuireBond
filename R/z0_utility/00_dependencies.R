@@ -23,7 +23,7 @@
 
 # CURIE本体で使うパッケージ
 .curie_packages <- c("dplyr", "purrr", "tibble", "tidyr", "stringr", "readr", "readxl",
-                     "writexl", "rlang", "collapse", "QuantLib", "GaussQuant")
+                     "writexl", "xml2", "zip", "rlang", "collapse", "QuantLib", "GaussQuant")
 
 # 不足パッケージを一覧で示して停止する。インストールは行わない。
 check_packages_CURIE <- function(packages = .curie_packages) {

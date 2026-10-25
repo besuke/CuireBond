@@ -74,7 +74,7 @@ write_demo_offer_jpy_CURIE <- function(path, marketdate = demo_marketdate_CURIE)
     "円債オファー" = jpy_sheet(rows, "円債オファー一覧（デモ・架空データ）"),
     "円債オファー_訂正前" = jpy_sheet(stale, "円債オファー一覧（訂正前・使用しない）")
   )
-  writexl::write_xlsx(sheets, path, col_names = FALSE)
+  write_xlsx_CURIE(sheets, path, col_names = FALSE)
   invisible(path)
 }
 
@@ -106,7 +106,7 @@ write_demo_offer_iso_CURIE <- function(path, marketdate = demo_marketdate_CURIE)
     "ISIN",           "Test codes containing TEST. They do not exist.",
     "注記",           "架空のテスト用データ。実在の銘柄・市場価格ではない"
   )
-  writexl::write_xlsx(list("README" = readme, "Offers" = offers), path, col_names = FALSE)
+  write_xlsx_CURIE(list("README" = readme, "Offers" = offers), path, col_names = FALSE)
   invisible(path)
 }
 
