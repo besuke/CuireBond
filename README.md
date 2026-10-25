@@ -1,6 +1,8 @@
 # CURIE
 
-債券オファーシートの取込・スプレッド計算・Excel出力を行う R Project。
+債券運用の分析・入れ替え提案・発注支援を目指す R Project。
+現在はオファーシートの取込・スプレッド計算・Excel出力を実装している。
+実装済みの機能と今後の構想（Phase 1〜最終段階）は **[docs/development_plan.md](docs/development_plan.md)** を参照。
 
 - **JPY**：`workflows_offer_sheet_JPY()`。JPY建て（ユーロ円債を含む）。JPY OIS ASW と JGBスプレッド
 - **ISO**：`workflows_offer_sheet_ISO()`。円以外の建て通貨。自国通貨OIS ASW と 円換算ASW
@@ -81,6 +83,7 @@ GaussQuant は当面インストール済み版を使う。2026-10-25 時点で�
 
 ## 次期機能（未実装）：オファーシートとクレジットレポートのURL連携
 
+開発計画の Phase 1-2（[docs/development_plan.md](docs/development_plan.md)）の一部。
 出力Excelのオファー行から、対応するクレジットレポートを開けるようにする。
 
 - **銘柄単位**：ISINをキーに、銘柄とクレジットレポートのURLを関連付ける。
