@@ -5,9 +5,26 @@
 .Rproj.user/
 
 # データと出力はGit管理対象外（フォルダ自体は .gitkeep で保持）
+# 実際のオファー・市場データ・銘柄属性・出力Excelはここに置く
 /data/*
 !/data/.gitkeep
 /output/*
 !/output/.gitkeep
 
+# APIキー・認証情報（環境変数や個人用設定に置き、コミットしない）
+.Renviron
+.env
+*.env
+*.pem
+*.key
+*credential*
+*secret*
+config/*_local.R
+config/*.local.*
+
+# 一時ファイル
+~$*
+*.tmp
+*.bak
 .DS_Store
+Thumbs.db

@@ -44,12 +44,33 @@ workflows_offer_sheet_JPY(
 - `R/` : CURIE本体（オファー変換、取込設定、属性取得、検証、計算、Excel出力、ワークフロー）
 - `R/demo/` : デモデータの生成とデモ属性取得関数（本体とは分離）
 - `docs/spec_differences.md` : 仕様書との差分
+- `config/settings_example.R` : 実データ用の設定のサンプル（取込設定・属性取得関数の雛形）
+- `run_demo_*.R` : 架空のデモデータを再生成して実行するスクリプト
 - `data/` : 入力データ（Git管理対象外）
 - `output/` : 出力結果（Git管理対象外）
 
-## 依存パッケージ
+## 依存パッケージとセットアップ
 
-tidyverse（dplyr, purrr, tibble, tidyr, stringr, readr, readxl）、writexl、collapse、QuantLib、GaussQuant。
+R 4.6.0（動作確認環境：Windows 11、R 4.6.0 ucrt）。
+
+| パッケージ | 用途 | 入手先 |
+|---|---|---|
+| dplyr, purrr, tibble, tidyr, stringr, readr, readxl | データ処理・取込（tidyverse） | CRAN |
+| writexl | Excel出力 | CRAN |
+| collapse | 移植した `merge_offer_bond_attributes()` が使用 | CRAN |
+| QuantLib | カーブ・ASW計算 | R用QuantLibバインディング |
+| GaussQuant | 債券生成・円債利回り | GitHub `besuke/GaussQuant` |
+
+```r
+install.packages(c("tidyverse", "writexl", "collapse"))
+```
+
+QuantLib と GaussQuant は別途導入する。実データ用の設定は `config/settings_example.R` を
+`config/settings_local.R` にコピーして書き換える（`*_local.R` と `.Renviron` はGit管理対象外）。
+APIキー・認証情報はリポジトリに含めない。
+
+Windowsでスマートアプリコントロールが有効な場合、CRANの一部パッケージのDLL（cli など）が
+読み込みを阻止されることがある。セキュリティ設定は変更せず、阻止されたパッケージを確認して対応する。
 
 GaussQuant は当面インストール済み版を使う。2026-10-25 時点で、インストール済み版は
 2026.9.12.1（GitHub `fa721b2`）、ソース版（`C:/AnalyticFin/Projects/GaussQuant`）は 2026.06.18.1 で、
