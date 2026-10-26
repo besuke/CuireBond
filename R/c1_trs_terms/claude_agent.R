@@ -66,7 +66,27 @@ claude_args_c1 <- function(document) {
   c("-p", paste0("Read prompt.md in the current folder and follow it exactly. Read ", document$local_name,
                  " yourself; if you cannot read it, write only review_items.md explaining why. ",
                  "Otherwise create reviewed.json, fpml.xml and review_items.md in this folder."),
-    "--output-format", "json", "--allowedTools", "Read", "Write", "--permission-mode", "acceptEdits")
+    "--output-format", "stream-json", "--verbose", "--allowedTools", "Read", "Write", "--permission-mode", "acceptEdits")
+}
+
+# stream-json の1行 → ログに出す英語の文言（なければ空）。開始、読んだファイル、書いたファイル、使ったツール
+.claude_events_c1 <- function(line) {
+  x <- tryCatch(jsonlite::fromJSON(line, simplifyVector = FALSE), error = function(e) NULL)
+  if (!is.list(x) || is.null(x$type)) return(character())
+  if (identical(x$type, "system") && identical(x$subtype, "init")) return("session started")
+  if (!identical(x$type, "assistant")) return(character())
+  tools <- purrr::keep(x$message$content %||% list(), \(c) identical(c$type, "tool_use"))
+  purrr::map_chr(tools, function(t) {
+    file <- basename(t$input$file_path %||% "")
+    switch(t$name, Read = paste0("read ", file), Write = paste0("wrote ", file), paste0("used ", t$name))
+  })
+}
+
+# Claude の標準出力（stream-json の各行、または1つの JSON）から、結果の行（type = result）を取り出す
+.claude_result_c1 <- function(stdout) {
+  lines <- strsplit(stdout, "\r?\n")[[1]]
+  rows <- purrr::map(lines[nzchar(lines)], \(l) tryCatch(jsonlite::fromJSON(l, simplifyVector = FALSE), error = function(e) NULL))
+  purrr::keep(rows, \(r) is.list(r) && identical(r$type, "result")) |> dplyr::last(default = NULL)
 }
 
 # 作業フォルダを用意する（古い結果は消す）
@@ -96,15 +116,21 @@ run_claude_c1 <- function(agent_dir, document, cmd = claude_command_c1(), args =
     env <- c("current", PATH = paste(normalizePath(bin), Sys.getenv("PATH"), sep = ";"))
   }
   t0 <- Sys.time()
+  # Claude の動き（資料を読んだ・ファイルを書いた）を、その都度ログに出す（stream-json の1行ごと）
+  progress <- function(line, proc) {
+    purrr::walk(.claude_events_c1(line), \(m) message(format(Sys.time(), "%H:%M:%S"), " [c1] Claude: ", m,
+                                                      " (", round(as.numeric(difftime(Sys.time(), t0, units = "secs"))), " s)"))
+  }
   res <- tryCatch(processx::run(cmd, args, wd = agent_dir, timeout = timeout_sec, error_on_status = FALSE,
-                                env = env, encoding = "UTF-8"),
+                                env = env, encoding = "UTF-8", stdout_line_callback = progress),
                   error = function(e) list(status = NA_integer_, stdout = "", stderr = conditionMessage(e), timeout = FALSE))
   log$seconds <- round(as.numeric(difftime(Sys.time(), t0, units = "secs")))
   log$exit_status <- res$status
   log$timed_out <- isTRUE(res$timeout)
   writeLines(res$stdout %||% "", file.path(agent_dir, "claude_stdout.txt"), useBytes = TRUE)
   writeLines(res$stderr %||% "", file.path(agent_dir, "claude_stderr.txt"), useBytes = TRUE)
-  run <- tryCatch(jsonlite::fromJSON(res$stdout), error = function(e) NULL)
+  # 最後の結果の行（type = result）から、費用の目安・回数・エラーの有無を読む
+  run <- .claude_result_c1(res$stdout %||% "")
   log$cost_usd <- run$total_cost_usd %||% NA_real_
   log$num_turns <- run$num_turns %||% NA_integer_
   log$is_error <- run$is_error %||% NA

@@ -149,7 +149,24 @@ stale_dir <- file.path(root, "stale"); dir.create(stale_dir)
 writeLines("{\"fields\": []}", file.path(stale_dir, "reviewed.json"))
 stale <- suppressMessages(run_claude_c1(stale_dir, list(kind = "html"), cmd = rscript,
                        args = c("-e", "writeLines('{}', 'reviewed.json'); quit(status = 2)"), timeout_sec = 10))
+# Claude の進捗：stream-json の行（開始・読んだ・書いた）をその都度ログに出し、最後の結果の行から費用を読む（偽の Claude）
+stream_dir <- file.path(root, "stream"); dir.create(stream_dir)
+stream_lines <- c('{"type":"system","subtype":"init"}',
+                  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"C:/x/document.pdf"}}]}}',
+                  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"C:/x/reviewed.json"}}]}}',
+                  '{"type":"result","subtype":"success","is_error":false,"num_turns":3,"total_cost_usd":0.42}')
+writeLines(stream_lines, file.path(stream_dir, "stream.txt"))
+progress_msgs <- character()
+streamed <- withCallingHandlers(
+  run_claude_c1(stream_dir, list(kind = "html"), cmd = rscript,
+                args = c("-e", "for (l in readLines('stream.txt')) { cat(l, '\\n', sep = ''); flush(stdout()); Sys.sleep(0.2) }"), timeout_sec = 20),
+  message = function(m) { progress_msgs <<- c(progress_msgs, conditionMessage(m)); invokeRestart("muffleMessage") })
 results <- dplyr::bind_rows(results,
+  check("Claude progress logged as it happens (session started, read, wrote)",
+        all(purrr::map_lgl(c("Claude: session started", "Claude: read document.pdf", "Claude: wrote reviewed.json"),
+                           \(p) any(grepl(p, progress_msgs, fixed = TRUE))))),
+  check("Claude cost and turns read from the final stream-json result line",
+        streamed$state == "ok" && identical(streamed$log$cost_usd, 0.42) && identical(streamed$log$num_turns, 3L)),
   check("Source URL recorded without tracking parameters", identical(man(i_of("URL 200 (PDF)"))$source, "https://mock.example/ok.pdf")),
   check("User-Agent taken from Curie_HTTP_USER_AGENT", identical(last_ua, Sys.getenv("Curie_HTTP_USER_AGENT", "Curie-c1 (TRS terms reader)")) || nzchar(last_ua)),
   check("Content/Content-Type mismatch recorded", nzchar(man(i_of("URL 200 (PDF content, other Content-Type)"))$acquisition$format$note)),
