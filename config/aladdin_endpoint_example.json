@@ -1,0 +1,8 @@
+{
+  "_説明": "Aladdin のトータル・リターン・スワップ銘柄の作成 API（利用者から提示された送信先）。CURIE は現在 payload の生成まで（下書きのみ）で、送信はしない。テスト環境か本番環境かは未確認、認証情報は未提供。認証情報はこのファイルにもコードにも書かない。",
+  "method": "POST",
+  "url": "https://daiwa.blackrock.com/api/data/reference-data/asset/asset-creation/v1/totalReturnSwapSecurity",
+  "content_type": "application/json",
+  "environment": "未確認（テスト環境か本番環境か）",
+  "authentication": "未提供"
+}

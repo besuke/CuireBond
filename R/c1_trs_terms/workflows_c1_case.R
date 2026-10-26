@@ -78,7 +78,8 @@ workflows_c1_case <- function(source, claude_mode = c("api", "demo"),
     pages <- tryCatch(document_pages_c1(acq$path, acq$format$kind),
                       error = function(e) .stage_fail_c1("読解用データ作成失敗", paste0("読解用データを作れません: ", conditionMessage(e))))
     jsonlite::write_json(pages, file.path(case_dir, "source", "reading_pages.json"), pretty = TRUE)
-    methods <- paste(purrr::imap_chr(table(pages$method), \(n, m) paste0(m, " ", n, " ページ")), collapse = "、")
+    methods <- pages |> dplyr::count(.data$method) |>
+      dplyr::transmute(x = paste0(.data$method, " ", .data$n, " ページ")) |> dplyr::pull("x") |> paste(collapse = "、")
     manifest$reading_data <- list(pages = nrow(pages), methods = methods, text_chars = sum(pages$chars))
     manifest$stages$reading_data <- paste0("作成済み（", methods, "）")
     document <- list(document_id = tools::file_path_sans_ext(gsub("[^A-Za-z0-9_.-]", "_", acq$name)), file_name = acq$name,

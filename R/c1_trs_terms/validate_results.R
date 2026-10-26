@@ -44,10 +44,15 @@
 # 記載あり・確認済みの値には引用が必要（なければ「引用なし（要確認）」）。記載のない項目は「引用不要」。
 # 本文のないページ（スキャン画像など）は、原資料に文字がないため照合できない（要確認）
 .quote_ok_c1 <- c("一致", "引用不要")
+# 本文のないページの番号
+.no_text_pages_c1 <- function(reading_pages) {
+  if (is.null(reading_pages)) return(integer())
+  reading_pages |> dplyr::filter(.data$method == "no_text") |> dplyr::pull("page")
+}
 .quote_checks_c1 <- function(conditions, source_path, kind, reading_pages = NULL) {
   if (is.na(source_path)) return(rep("原資料なし", nrow(conditions)))
   pages <- .normalize_text_c1(document_pages_c1(source_path, kind)$text)
-  no_text_pages <- if (is.null(reading_pages)) integer() else reading_pages$page[reading_pages$method == "no_text"]
+  no_text_pages <- .no_text_pages_c1(reading_pages)
   purrr::pmap_chr(list(conditions$value_status, conditions$source_page, conditions$quote), function(status, p, q) {
     if (!nzchar(q)) return(if (identical(status, "stated")) "引用なし（要確認）" else "引用不要")
     target <- .normalize_text_c1(q)
@@ -201,8 +206,11 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
                 verdicts = list(), final = FALSE))
   }
   cond <- results$conditions |> dplyr::left_join(dictionary, by = c("item_id" = "field"))
-  stated <- cond$value_status == "stated"
-  notional_ccy <- dplyr::first(cond$value[cond$item_id == "trade.notional_currency" & stated], default = NA_character_)
+  # 記載ありの値（なければ NA）
+  stated_value <- function(id) {
+    cond |> dplyr::filter(.data$item_id == id, .data$value_status == "stated") |> dplyr::pull("value") |> dplyr::first(default = NA_character_)
+  }
+  notional_ccy <- stated_value("trade.notional_currency")
   cond <- cond |>
     dplyr::mutate(
       期待する単位 = .expected_unit_c1(.data$item_id, dplyr::coalesce(.data$type, ""), notional_ccy),
@@ -211,25 +219,31 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
       引用の実在確認 = .quote_checks_c1(cond, results$source_path, results$source_kind, results$reading_pages)
     )
 
-  key <- paste(cond$item_id, cond$leg_id, cond$seq)
-  unknown <- unique(cond$item_id[is.na(cond$section)])
-  required <- dictionary$field[dictionary$required]
+  # 条件に当てはまる項目ID（重複なし）、条件に当てはまる行の説明
+  ids_where <- function(...) cond |> dplyr::filter(...) |> dplyr::distinct(.data$item_id) |> dplyr::pull("item_id")
+  labels_where <- function(label, ...) cond |> dplyr::filter(...) |> dplyr::transmute(x = {{ label }}) |> dplyr::pull("x")
+
+  duplicated_keys <- cond |> dplyr::count(.data$item_id, .data$leg_id, .data$seq) |> dplyr::filter(.data$n > 1L) |>
+    dplyr::transmute(key = paste(.data$item_id, .data$leg_id, .data$seq)) |> dplyr::pull("key")
+  unknown <- ids_where(is.na(.data$section))
+  stated_empty <- ids_where(.data$value_status == "stated", !nzchar(.data$value))
+  type_bad <- ids_where(.data$型の確認 %in% FALSE)
+  unit_bad <- labels_where(paste0(.data$item_id, "（", .data$unit, "、期待 ", .data$期待する単位, "）"), .data$単位の確認 %in% FALSE)
+  required <- dictionary |> dplyr::filter(.data$required) |> dplyr::pull("field")
   absent <- setdiff(required, cond$item_id)
-  req_rows <- dplyr::filter(cond, .data$item_id %in% required)
-  unresolved_req <- unique(req_rows$item_id[!(req_rows$value_status == "stated" & req_rows$review_status == "confirmed")])
-  date_of <- function(id) suppressWarnings(as.Date(dplyr::first(cond$value[cond$item_id == id & stated], default = NA_character_)))
+  unresolved_req <- ids_where(.data$item_id %in% required, !(.data$value_status == "stated" & .data$review_status == "confirmed"))
   d <- purrr::map(c(trade = "trade.trade_date", eff = "trade.effective_date", term = "trade.termination_date",
-                    final = "return.final_valuation_date"), date_of)
+                    final = "return.final_valuation_date"), \(id) suppressWarnings(as.Date(stated_value(id))))
   order_ok <- if (any(is.na(c(d$trade, d$eff, d$term)))) NA else d$trade <= d$eff && d$eff < d$term &&
     (is.na(d$final) || d$final <= d$term)
-  product <- dplyr::first(cond$value[cond$item_id == "trade.product_type" & stated], default = NA_character_)
+  product <- stated_value("trade.product_type")
   sha_ok <- if (is.na(results$source_path)) FALSE else identical(pdf_sha256_c1(results$source_path), m$document$sha256)
-  no_text_pages <- if (is.null(results$reading_pages)) integer() else results$reading_pages$page[results$reading_pages$method == "no_text"]
+  no_text_pages <- .no_text_pages_c1(results$reading_pages)
 
-  # 原文根拠
-  quote_bad <- !cond$引用の実在確認 %in% .quote_ok_c1
-  quote_missing <- cond$引用の実在確認 == "引用なし（要確認）"
-  quote_no_text <- cond$引用の実在確認 == "本文なしのページ（照合できない）"
+  # 原文根拠：引用の確認結果の分類
+  quote_missing <- ids_where(.data$引用の実在確認 == "引用なし（要確認）")
+  quote_wrong <- labels_where(paste0(.data$item_id, "：", .data$引用の実在確認),
+                              !.data$引用の実在確認 %in% c(.quote_ok_c1, "引用なし（要確認）", "本文なしのページ（照合できない）"))
   # FpML
   fpml <- results$files[["fpml"]]
   fpml_check <- if (!is.na(fpml)) validate_fpml_c1(fpml, xsd_path) else NULL
@@ -238,23 +252,21 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
   checks <- dplyr::bind_rows(
     run,
     .check_row_c1("条件", "項目IDが定義にある", !length(unknown), unknown),
-    .check_row_c1("条件", "項目・レッグ・番号の重複なし", !anyDuplicated(key), unique(key[duplicated(key)])),
+    .check_row_c1("条件", "項目・レッグ・番号の重複なし", !length(duplicated_keys), duplicated_keys),
     .check_row_c1("条件", "必須項目の行がある", !length(absent), absent),
     .check_row_c1("条件", "原文の状態の値", all(cond$value_status %in% .value_status_levels_c1), unique(setdiff(cond$value_status, .value_status_levels_c1))),
-    .check_row_c1("条件", "記載ありの項目に値がある", !any(stated & !nzchar(cond$value)), cond$item_id[stated & !nzchar(cond$value)]),
-    .check_row_c1("条件", "記載ありの値の型", all(cond$型の確認 %in% c(TRUE, NA)), cond$item_id[cond$型の確認 %in% FALSE]),
-    .check_row_c1("条件", "単位", all(cond$単位の確認 %in% c(TRUE, NA)),
-                  paste0(cond$item_id, "（", cond$unit, "、期待 ", cond$期待する単位, "）")[cond$単位の確認 %in% FALSE]),
+    .check_row_c1("条件", "記載ありの項目に値がある", !length(stated_empty), stated_empty),
+    .check_row_c1("条件", "記載ありの値の型", !length(type_bad), type_bad),
+    .check_row_c1("条件", "単位", !length(unit_bad), unit_bad),
     .check_row_c1("条件", "日付の順序（約定日≦開始日＜終了日、最終評価日≦終了日）", order_ok,
                   if (is.na(order_ok)) "日付がそろわない" else ""),
     .check_row_c1("条件", "トータル・リターン・スワップである", if (is.na(product)) NA else product == "TOTAL_RETURN_SWAP",
                   dplyr::coalesce(product, "商品の種類が未確認"), na_label = "判定できない"),
     .check_row_c1("確認", "確認状態の値", all(cond$review_status %in% .c1_review_levels), unique(setdiff(cond$review_status, .c1_review_levels))),
     .check_row_c1("確認", "必須項目が原文で確認された", !length(unresolved_req), unresolved_req),
-    .check_row_c1("根拠", "記載ありの値に原文の引用がある", if (any(quote_missing)) NA else TRUE,
-                  if (any(quote_missing)) paste0("引用なし：", paste(cond$item_id[quote_missing], collapse = ", ")) else "", na_label = "要確認"),
-    .check_row_c1("根拠", "原文引用が指定ページにある", !any(quote_bad & !quote_missing & !quote_no_text),
-                  paste0(cond$item_id, "：", cond$引用の実在確認)[quote_bad & !quote_missing & !quote_no_text]),
+    .check_row_c1("根拠", "記載ありの値に原文の引用がある", if (length(quote_missing)) NA else TRUE,
+                  if (length(quote_missing)) paste0("引用なし：", paste(quote_missing, collapse = ", ")) else "", na_label = "要確認"),
+    .check_row_c1("根拠", "原文引用が指定ページにある", !length(quote_wrong), quote_wrong),
     .check_row_c1("根拠", "本文のないページの引用（原資料で照合できない）", if (length(no_text_pages)) NA else TRUE,
                   if (length(no_text_pages)) paste0("本文のないページ：p.", paste(no_text_pages, collapse = ","), "。人が原資料で確認する") else "本文のないページなし", na_label = "要確認"),
     .check_row_c1("版", "原資料が取得時の記録と一致（SHA-256）", sha_ok),
@@ -269,8 +281,8 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
   # 4つの判定（別々に出す）
   verdict_of <- function(rows) {
     if (!nrow(rows)) return("未実施")
-    if (any(rows$結果 == "不合格")) "不合格" else if (any(rows$結果 %in% c("要確認", "未検証", "未実施（XSD未設定）"))) {
-      unique(rows$結果[rows$結果 %in% c("要確認", "未検証", "未実施（XSD未設定）")])[1] } else "合格"
+    pending <- rows |> dplyr::filter(.data$結果 %in% c("要確認", "未検証", "未実施（XSD未設定）")) |> dplyr::pull("結果")
+    if (any(rows$結果 == "不合格")) "不合格" else if (length(pending)) pending[[1]] else "合格"
   }
   verdicts <- list(
     XML構文 = verdict_of(dplyr::filter(checks, .data$検証 == "XML構文（整形式・ルート要素）" | .data$検証 == "XML構文")),

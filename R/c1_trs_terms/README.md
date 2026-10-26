@@ -69,8 +69,27 @@ Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_wa
 | `source/` | 原資料（そのまま）、取得記録、読解用データ |
 | `agents/claude/` | Claude への依頼文・原資料の写し・結果・標準出力（`claude_stdout.txt`）・標準エラー（`claude_stderr.txt`） |
 | `logs/run_log.jsonl` | 段階ごとのログ |
+| `result/aladdin_request_DRAFT.json` | Aladdin 送信用の要求本文の下書き（未送信。未確定の項目は含めない。空なら `{}`） |
+| `result/aladdin_unresolved.json` | 下書きであること（`status`）、送信先（未送信）、単位の換算（`conversions`）、未確定の項目と理由（`unresolved`） |
 
 状態：検証済み／要確認／デモ／取得失敗／読解用データ作成失敗／読解失敗（Claude の失敗・タイムアウト・読めなかった）／回答形式不正
+
+## Aladdin（payload の生成まで。送信はしない）
+
+| 項目 | 内容 |
+|---|---|
+| 送信先 | `POST https://daiwa.blackrock.com/api/data/reference-data/asset/asset-creation/v1/totalReturnSwapSecurity`（`config/aladdin_endpoint_example.json`） |
+| Content-Type | `application/json` |
+| 環境 | **未確認**（テスト環境か本番環境か） |
+| 認証 | **未提供**（提供されても、コード・Git・ログには書かない） |
+| 要求本文 | 利用者から提示された見本の形（`counterparty`、`swapInfo.payLeg／recLeg`、`*PaymentReset`、`*Stub` など） |
+
+- 原文の値をそのまま使える項目（開始日・終了日・通貨・ルックバック日数）だけ入れる
+- Aladdin のコード・列挙値・スプレッドの単位・自社の向き（payLeg／recLeg）は、対応表（`config/aladdin_map_example.json` の形。
+  埋めたものは `tmp/aladdin_map.json` などに置き、`CURIE_ALADDIN_MAP` で指定）にあるときだけ入れる。なければ未確定として理由を残す
+- スプレッドは、条件の値（bp）を対応表の `spread_unit`（bp・decimal・percent）に換算する。例：原文「0.90%」→ 90 bp → decimal 0.009
+- 想定元本は、提示された見本に項目がないため、格納先を推測せず未確定として残す
+- 送信処理は作っていない（環境の確認と認証情報の提供の後に作る）
 
 ## ファイル
 
@@ -86,9 +105,10 @@ Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_wa
 | `verify_quotes.R` | 引用照合のための正規化、SHA-256 |
 | `fpml_trs.R` | FpML の作成（デモ用）と、FpML のコード変換表（照合でも使う） |
 | `fpml_validate.R` | FpML の構文・スキーマ検証（xml2） |
+| `aladdin_payload.R` | Aladdin 送信用の要求本文の下書き（送信はしない） |
 
 ## 未完了
 
 - FpML の公式XSD での検証、ISDA 定義の名称と FpML のコード（contractualDefinitions 等）の確認
-- Aladdin への送信（送信先 URL・メソッド・認証、列挙値の一覧、Aladdin のコード対応、スプレッドの単位、想定元本の項目の提示後）
+- Aladdin への送信（送信先がテスト環境か本番環境かの確認、認証情報、列挙値の一覧、Aladdin のコード対応、スプレッドの単位、想定元本の格納先の提示後）
 - 同じ資料を複数回読ませたときの揺れの測定、正解つき試験資料での正答率の測定

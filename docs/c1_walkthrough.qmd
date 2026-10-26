@@ -58,12 +58,12 @@ TRS（トータル・リターン・スワップ）の確認書・ターム条�
 入力：`data/demo_c1_trs/pdf/DEMO_TRS_confirmation.pdf`（Claude はモック）
 
 ```
-14:16:11 [c1] 資料の取得：data/demo_c1_trs/pdf/DEMO_TRS_confirmation.pdf
-14:16:12 [c1] 資料の取得：DEMO_TRS_confirmation.pdf（PDF、2 ページ、SHA-256 a8467a4b67fe…、本文 pdf_text 2 ページ）
-14:16:12 [c1] Claude 依頼文作成：モード demo
-14:16:12 [c1] Claude 実行：デモ（用意した結果を使う。Claude は呼ばない）
-14:16:12 [c1] 成果物の保存：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_141611/result
-14:16:13 [c1] 終了：保存しました：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_141611
+16:30:43 [c1] 資料の取得：data/demo_c1_trs/pdf/DEMO_TRS_confirmation.pdf
+16:30:44 [c1] 資料の取得：DEMO_TRS_confirmation.pdf（PDF、2 ページ、SHA-256 8f28604f387d…、本文 pdf_text 2 ページ）
+16:30:44 [c1] Claude 依頼文作成：モード demo
+16:30:44 [c1] Claude 実行：デモ（用意した結果を使う。Claude は呼ばない）
+16:30:44 [c1] 成果物の保存：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_163043/result
+16:30:46 [c1] 終了：保存しました：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_163043
 ```
 
 **主な条件**
@@ -131,12 +131,12 @@ TRS（トータル・リターン・スワップ）の確認書・ターム条�
 同じ内容の HTML を入力にした。HTML は全体を1ページとして扱い、根拠の位置には条項名を書く。
 
 ```
-14:16:17 [c1] 資料の取得：output/c1_trs/walkthrough/DEMO_TRS_confirmation.htm
-14:16:17 [c1] 資料の取得：DEMO_TRS_confirmation.htm（HTML、1 ページ、SHA-256 058feb78d819…、本文 html_text 1 ページ、文字コード utf-8）
-14:16:17 [c1] Claude 依頼文作成：モード demo
-14:16:17 [c1] Claude 実行：デモ（用意した結果を使う。Claude は呼ばない）
-14:16:18 [c1] 成果物の保存：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_141617/result
-14:16:18 [c1] 終了：保存しました：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_141617
+16:30:51 [c1] 資料の取得：output/c1_trs/walkthrough/DEMO_TRS_confirmation.htm
+16:30:52 [c1] 資料の取得：DEMO_TRS_confirmation.htm（HTML、1 ページ、SHA-256 058feb78d819…、本文 html_text 1 ページ、文字コード utf-8）
+16:30:52 [c1] Claude 依頼文作成：モード demo
+16:30:52 [c1] Claude 実行：デモ（用意した結果を使う。Claude は呼ばない）
+16:30:52 [c1] 成果物の保存：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_163051/result
+16:30:53 [c1] 終了：保存しました：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_163051
 ```
 
 ## 6. 実行例 C：取得失敗
@@ -144,9 +144,9 @@ TRS（トータル・リターン・スワップ）の確認書・ターム条�
 存在しないファイルを指定した。原資料を取得できないため、Claude には進まずに止まる（URL の 404・403 も同じ扱い。9 章）。
 
 ```
-14:16:23 [c1] 資料の取得：data/demo_c1_trs/pdf/DEMO_TRS_missing.pdf
-14:16:23 [c1] 中止：資料を取得できません（取得失敗）: ファイルがありません: data/demo_c1_trs/pdf/DEMO_TRS_missing.pdf
-14:16:24 [c1] 終了：取得失敗
+16:31:00 [c1] 資料の取得：data/demo_c1_trs/pdf/DEMO_TRS_missing.pdf
+16:31:00 [c1] 中止：資料を取得できません（取得失敗）: ファイルがありません: data/demo_c1_trs/pdf/DEMO_TRS_missing.pdf
+16:31:01 [c1] 終了：取得失敗
 ```
 
 ## 7. 成果物
@@ -168,7 +168,7 @@ output/c1_trs/cases/<案件ID>/
 ```json
   "conditions": [
     {
-      "case_id": "DEMO_TRS_confirmation_20261026_141611",
+      "case_id": "DEMO_TRS_confirmation_20261026_163043",
       "item_id": "trade.product_type",
       "leg_id": "trade",
       "seq": 1,
@@ -219,7 +219,7 @@ output/c1_trs/cases/<案件ID>/
 R の取得処理（`acquire_document_c1()`）に HTTP 応答のモックを渡した結果（ネットワークにつながない）。全体のテストは `Rscript scripts/test_c1_case_mock.R`。
 
 ```
-https://mock.example/ok.pdf?utm_source=x → 取得元 https://mock.example/ok.pdf、HTTP 200、pdf、SHA-256 a8467a4b67fe…
+https://mock.example/ok.pdf?utm_source=x → 取得元 https://mock.example/ok.pdf、HTTP 200、pdf、SHA-256 8f28604f387d…
 https://mock.example/denied.htm → 資料を取得できません（取得失敗）: HTTP 403（アクセスを拒否されました）。アクセス制限の回避はしません
 https://mock.example/missing.pdf → 資料を取得できません（取得失敗）: HTTP 404
 ```

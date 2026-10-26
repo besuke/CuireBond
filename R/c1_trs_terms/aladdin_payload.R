@@ -22,13 +22,14 @@ read_aladdin_map_c1 <- function(path = Sys.getenv("CURIE_ALADDIN_MAP", "")) {
 # 条件の表 → 値を引く関数（記載あり・確認済みの値だけ）
 .condition_getter_c1 <- function(conditions) {
   ok <- dplyr::filter(conditions, .data$value_status == "stated", .data$review_status == "confirmed", nzchar(.data$value))
-  function(id) dplyr::first(ok$value[ok$item_id == id], default = NA_character_)
+  function(id) ok |> dplyr::filter(.data$item_id == id) |> dplyr::pull("value") |> dplyr::first(default = NA_character_)
 }
 
 build_aladdin_trs_payload_c1 <- function(conditions, aladdin_map = read_aladdin_map_c1()) {
   g <- .condition_getter_c1(conditions)
   payload <- list()
   unresolved <- list()
+  conversions <- list()
   set <- function(path, value) payload <<- purrr::assign_in(payload, strsplit(path, ".", fixed = TRUE)[[1]], value)
   miss <- function(path, item, value, reason) {
     unresolved[[length(unresolved) + 1L]] <<- tibble::tibble(項目 = path, 条件 = item, 値 = dplyr::coalesce(value, ""), 理由 = reason)
@@ -54,7 +55,7 @@ build_aladdin_trs_payload_c1 <- function(conditions, aladdin_map = read_aladdin_
     miss("swapInfo.payLeg／recLeg", "trade.total_return_receiver", g("trade.total_return_receiver"),
          if (!length(ours)) "自社（ファンド）の名前が対応表（our_party_names）にないため、payLeg と recLeg の向きを決められない"
          else "トータル・リターンの受取者・支払者のどちらも自社の名前と一致しない")
-    return(list(payload = payload, unresolved = purrr::list_rbind(unresolved), side = side))
+    return(list(payload = payload, unresolved = purrr::list_rbind(unresolved), conversions = tibble::tibble(), side = side))
   }
   return_leg <- if (side == "receive_return") "recLeg" else "payLeg"
   funding_leg <- if (side == "receive_return") "payLeg" else "recLeg"
@@ -82,12 +83,20 @@ build_aladdin_trs_payload_c1 <- function(conditions, aladdin_map = read_aladdin_
   idx <- g("funding.floating_rate_index"); tenor <- g("funding.index_tenor")
   put(paste0("swapInfo.", funding_leg, ".resetIndex"), "funding.floating_rate_index＋index_tenor", "index_codes",
       if (is.na(idx)) NA_character_ else paste0(idx, if (!is.na(tenor)) paste0(" ", tenor) else ""))
+  # スプレッド：条件の値は bp（原文の % 表記を bp に直したもの）。Aladdin の単位（spread_unit）に換算し、換算の記録を残す
   spread <- g("funding.spread_bp"); unit <- aladdin_map$spread_unit %||% NA_character_
-  if (is.na(spread)) miss(paste0("swapInfo.", funding_leg, ".spread"), "funding.spread_bp", NA, "原文に記載がない、または未確定")
-  else if (identical(unit, "bp")) set(paste0("swapInfo.", funding_leg, ".spread"), as.numeric(spread))
-  else if (identical(unit, "decimal")) set(paste0("swapInfo.", funding_leg, ".spread"), as.numeric(spread) / 10000)
-  else if (identical(unit, "percent")) set(paste0("swapInfo.", funding_leg, ".spread"), as.numeric(spread) / 100)
-  else miss(paste0("swapInfo.", funding_leg, ".spread"), "funding.spread_bp", spread, "spread の単位（bp・decimal・percent）が未提示（対応表の spread_unit）")
+  spread_path <- paste0("swapInfo.", funding_leg, ".spread")
+  factor <- c(bp = 1, decimal = 1 / 10000, percent = 1 / 100)
+  if (is.na(spread)) miss(spread_path, "funding.spread_bp", NA, "原文に記載がない、または未確定")
+  else if (!unit %in% names(factor)) miss(spread_path, "funding.spread_bp", paste0(spread, " bp"), "spread の単位（bp・decimal・percent）が未提示（対応表の spread_unit）")
+  else {
+    value <- as.numeric(spread) * factor[[unit]]
+    set(spread_path, value)
+    conversions[[length(conversions) + 1L]] <- tibble::tibble(
+      項目 = spread_path,
+      原文の引用 = conditions |> dplyr::filter(.data$item_id == "funding.spread_bp") |> dplyr::pull("quote") |> dplyr::first(default = ""),
+      条件の値 = paste0(spread, " bp"), Aladdin_の単位 = unit, Aladdin_の値 = format(value, scientific = FALSE, digits = 15))
+  }
   put(paste0("swapInfo.", funding_leg, ".accrualBase"), "funding.day_count", "accrual_base")
 
   # 資金調達レッグの支払・リセット
@@ -114,21 +123,38 @@ build_aladdin_trs_payload_c1 <- function(conditions, aladdin_map = read_aladdin_
   }
   # 仕様の見本にない条件（送る項目がない）
   if (!is.na(g("trade.notional_amount"))) {
-    miss("（想定元本）", "trade.notional_amount", g("trade.notional_amount"), "受け取った要求本文の見本に想定元本の項目がない")
+    miss("（想定元本：格納先未確認）", "trade.notional_amount", paste(g("trade.notional_amount"), g("trade.notional_currency") %|% ""),
+         "受け取った要求本文の見本に想定元本の項目がなく、格納先が未確認（推測で入れない）")
   }
-  list(payload = payload, unresolved = purrr::list_rbind(unresolved), side = side)
+  list(payload = payload, unresolved = purrr::list_rbind(unresolved), conversions = purrr::list_rbind(conversions), side = side)
+}
+
+# 送信先の記録（config/aladdin_endpoint_example.json。送信には使わない。認証情報は含めない）
+read_aladdin_endpoint_c1 <- function(path = file.path("config", "aladdin_endpoint_example.json")) {
+  if (!file.exists(path)) return(list(url = "未設定"))
+  x <- jsonlite::fromJSON(path, simplifyVector = FALSE)
+  x[setdiff(names(x), "_説明")]
 }
 
 # 案件の条件から要求 JSON の下書きを作り、result/ に保存する（送信はしない）
-write_aladdin_draft_c1 <- function(case, aladdin_map = read_aladdin_map_c1()) {
+#   aladdin_request_DRAFT.json … 要求本文だけ（Aladdin の見本の形。未確定の項目は含めない）
+#   aladdin_unresolved.json    … 下書きであること、送信先（未送信）、単位の換算、未確定の項目と理由
+write_aladdin_draft_c1 <- function(case, aladdin_map = read_aladdin_map_c1(), endpoint = read_aladdin_endpoint_c1()) {
   cond <- case$validation$conditions
   if (is.null(cond)) return(NULL)
   built <- build_aladdin_trs_payload_c1(cond, aladdin_map)
   dir <- file.path(case$case_dir, "result")
   path <- file.path(dir, "aladdin_request_DRAFT.json")
-  jsonlite::write_json(built$payload, path, auto_unbox = TRUE, pretty = TRUE, null = "null", digits = NA)
-  jsonlite::write_json(list(note = "Aladdin へは送信していない（送信先・認証が未提示）", sha256 = pdf_sha256_c1(path),
-                            side = built$side, unresolved = built$unresolved),
-                       file.path(dir, "aladdin_unresolved.json"), auto_unbox = TRUE, pretty = TRUE, null = "null")
-  list(path = path, unresolved = built$unresolved, payload = built$payload)
+  # 要求本文は JSON のオブジェクト（空でも [] ではなく {} にする）
+  payload <- if (length(built$payload)) built$payload else rlang::set_names(list(), character())
+  jsonlite::write_json(payload, path, auto_unbox = TRUE, pretty = TRUE, null = "null", digits = NA)
+  n <- nrow(built$unresolved)
+  jsonlite::write_json(list(
+    status = if (n) paste0("下書き（未送信）：未確定 ", n, " 項目") else "下書き（未送信）：未確定なし",
+    note = "Aladdin へは送信していない。CURIE は payload の生成まで（テスト環境か本番環境か未確認、認証情報は未提供）",
+    endpoint = endpoint, request_file = basename(path), request_sha256 = pdf_sha256_c1(path),
+    mapping_file = Sys.getenv("CURIE_ALADDIN_MAP", "（未設定：Aladdin のコード・列挙値・単位・自社の向きはすべて未確定）"),
+    side = built$side, conversions = built$conversions, unresolved = built$unresolved),
+    file.path(dir, "aladdin_unresolved.json"), auto_unbox = TRUE, pretty = TRUE, null = "null", digits = NA)
+  list(path = path, unresolved = built$unresolved, conversions = built$conversions, payload = built$payload)
 }

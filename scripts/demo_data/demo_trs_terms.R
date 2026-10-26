@@ -142,16 +142,18 @@ write_demo_trs_html_c1 <- function(dir) {
 }
 
 # HTML を PDF に印刷する（Chrome／Edge のヘッドレス印刷。画像だけの PDF を作るためだけに使う）
-.html_to_pdf_demo_c1 <- function(html_path, pdf_path) {
+# processx で起動し、時間内に終わらなければ止める（ヘッドレスのブラウザが止まったままになることがあるため）
+.html_to_pdf_demo_c1 <- function(html_path, pdf_path, timeout_sec = 120) {
   browser <- purrr::keep(c(Sys.getenv("CURIE_CHROME", ""), "C:/Program Files/Google/Chrome/Application/chrome.exe",
                            "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"), \(p) nzchar(p) && file.exists(p))
   if (!length(browser)) stop("HTMLをPDFへ変換するブラウザ（Chrome／Edge）が見つかりません。CURIE_CHROME で指定してください。", call. = FALSE)
-  q <- function(x) paste0('"', x, '"')   # Windows のコマンドラインは二重引用符で囲む
   profile <- tempfile("curie_browser_")
   on.exit(unlink(profile, recursive = TRUE), add = TRUE)
-  system2(browser[[1]], c("--headless=new", "--disable-gpu", "--no-pdf-header-footer", paste0("--user-data-dir=", q(profile)),
-                          paste0("--print-to-pdf=", q(normalizePath(pdf_path, winslash = "/", mustWork = FALSE))),
-                          q(paste0("file:///", normalizePath(html_path, winslash = "/")))), stdout = FALSE, stderr = FALSE)
+  res <- processx::run(browser[[1]], c("--headless=new", "--disable-gpu", "--no-pdf-header-footer", paste0("--user-data-dir=", profile),
+                                       paste0("--print-to-pdf=", normalizePath(pdf_path, winslash = "/", mustWork = FALSE)),
+                                       paste0("file:///", normalizePath(html_path, winslash = "/"))),
+                       timeout = timeout_sec, error_on_status = FALSE, cleanup_tree = TRUE)
+  if (isTRUE(res$timeout)) stop("HTMLをPDFへ変換する途中でブラウザが止まりました（", timeout_sec, " 秒）: ", html_path, call. = FALSE)
   if (!file.exists(pdf_path)) stop("HTMLをPDFへ変換できませんでした: ", html_path, call. = FALSE)
   invisible(pdf_path)
 }

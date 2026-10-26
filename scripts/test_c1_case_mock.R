@@ -139,10 +139,12 @@ check <- function(name, ok) tibble::tibble(テスト = name, 状態 = if (isTRUE
 man <- function(i) jsonlite::fromJSON(file.path(root, "cases", sprintf("mock_%02d", i), "manifest.json"))
 reading <- function(i) jsonlite::fromJSON(file.path(root, "cases", sprintf("mock_%02d", i), "source", "reading_pages.json"))
 i_of <- function(name) match(name, cases$name)
+# 支払カレンダー・支払日の営業日調整の照合結果（r_validation.json から）
 payment_rows <- function(i) {
-  v <- jsonlite::fromJSON(file.path(root, "cases", sprintf("mock_%02d", i), "r_validation.json"))$checks
-  v <- v[grepl("^条件との整合：funding.payment", v$検証), ]
-  transform(v, item = sub("^条件との整合：", "", v$検証))
+  jsonlite::fromJSON(file.path(root, "cases", sprintf("mock_%02d", i), "r_validation.json"))$checks |>
+    tibble::as_tibble() |>
+    dplyr::mutate(item = sub("^条件との整合：", "", .data$検証)) |>
+    dplyr::filter(.data$item %in% c("funding.payment_calendar", "funding.payment_business_day_convention"))
 }
 # 古い成果物：作業フォルダに前回の reviewed.json を置いたまま失敗させても、使わない
 stale_dir <- file.path(root, "stale"); dir.create(stale_dir)
@@ -161,18 +163,37 @@ results <- dplyr::bind_rows(results,
   check("&#147; を “ として読む", grepl("“Fund”", html_text_c1(local({ p <- tempfile(fileext = ".htm"); writeBin(charToRaw("<html><body>the &#147;Fund&#148;</body></html>"), p); p })))),
   check("参照をたどって支払カレンダー・営業日調整が合格（たどった参照を記録）", local({
     x <- payment_rows(i_of("FpML の参照（dateRelativeTo）"))
-    all(x$結果[x$item %in% c("funding.payment_calendar", "funding.payment_business_day_convention")] == "合格") &&
-      all(grepl("returnLegPaymentDates", x$詳細[x$item %in% c("funding.payment_calendar", "funding.payment_business_day_convention")]))
+    nrow(x) == 2L && all(x$結果 == "合格") && all(grepl("returnLegPaymentDates", x$詳細))
   })),
   check("参照先の id がなければ支払カレンダー・営業日調整は未検証", local({
     x <- payment_rows(i_of("FpML の参照先がない"))
-    all(x$結果[x$item %in% c("funding.payment_calendar", "funding.payment_business_day_convention")] == "未検証")
+    nrow(x) == 2L && all(x$結果 == "未検証")
   })),
   # Aladdin 送信用 JSON（下書き。送信しない）
   check("Aladdin：対応表なしでは下書きと未確定を保存し、向き（pay/rec）を未確定にする", local({
     d <- file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")), "result")
     u <- jsonlite::fromJSON(file.path(d, "aladdin_unresolved.json"))
     file.exists(file.path(d, "aladdin_request_DRAFT.json")) && any(grepl("our_party_names", u$unresolved$理由))
+  })),
+  check("Aladdin：通常実行の下書きにテスト用コードがなく、空の要求本文は {}、下書き・送信先（環境未確認）・未確定を明示", local({
+    d <- file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")), "result")
+    draft <- paste(readLines(file.path(d, "aladdin_request_DRAFT.json"), encoding = "UTF-8"), collapse = "")
+    u <- jsonlite::fromJSON(file.path(d, "aladdin_unresolved.json"))
+    !grepl("TEST", draft) && identical(trimws(draft), "{}") && startsWith(u$status, "下書き（未送信）") &&
+      grepl("totalReturnSwapSecurity", u$endpoint$url) && grepl("未確認", u$endpoint$environment) && nrow(u$unresolved) > 0
+  })),
+  check("Aladdin：スプレッド（原文 0.35% → 35 bp）を単位どおりに換算して記録（bp 35／decimal 0.0035／percent 0.35）", local({
+    cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")))))$conditions
+    by_unit <- purrr::map(c(bp = "bp", decimal = "decimal", percent = "percent"),
+                          \(u) build_aladdin_trs_payload_c1(cond, list(our_party_names = list("CURIE Demo Fund"), spread_unit = u)))
+    vals <- purrr::map_dbl(by_unit, \(b) b$payload$swapInfo$payLeg$spread)
+    isTRUE(all.equal(unname(vals), c(35, 0.0035, 0.35))) && identical(by_unit$decimal$conversions$条件の値, "35 bp") &&
+      identical(by_unit$decimal$conversions$Aladdin_の値, "0.0035")
+  })),
+  check("Aladdin：想定元本は格納先を推測せず未確定にする", local({
+    cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")))))$conditions
+    u <- build_aladdin_trs_payload_c1(cond, list(our_party_names = list("CURIE Demo Fund")))$unresolved
+    any(grepl("格納先が未確認", u$理由) & u$条件 == "trade.notional_amount")
   })),
   check("Aladdin：対応表（テスト用の架空コード）があれば、日付・スプレッド・ルックバック・カレンダーを正しいレッグに入れる", local({
     cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")))))$conditions
