@@ -91,6 +91,7 @@ stop_c1_inbox_watch(config)                         # 停止（処理中の1件�
 
 ```
 ****** CURIE OTC Derivative ******
+Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.
 
 Contract validation started.
 Watching PDF files directly under this folder (subfolders such as processed are excluded).

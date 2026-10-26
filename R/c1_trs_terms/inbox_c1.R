@@ -283,7 +283,9 @@ process_c1_pdf <- function(pdf, config, claude_mode = c("api", "demo"), claude_d
 # ---- フォルダーの処理 -------------------------------------------------------------------------
 # 起動メッセージ：どのフォルダーを監視し、どこへ保存するか（extra：追加の行）
 c1_inbox_banner <- function(config, extra = NULL) {
-  say_Curie("****** CURIE OTC Derivative ******\n")
+  # © は ASCII 外でログ収集時に文字化けしうるので (C) と書く
+  say_Curie("****** CURIE OTC Derivative ******")
+  say_Curie("Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.\n")
   say_Curie("Contract validation started.")
   say_path_Curie("Watching PDF files directly under this folder (subfolders such as processed are excluded).", config$inbox, "dir")
   say_path_Curie("Completed cases are saved under this folder.", config$processed, "dir")
