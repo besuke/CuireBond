@@ -26,7 +26,7 @@ run_case <- function(src, demo_dir) {
   out <- system2(rscript, c("scripts/run_c1_document.R", shQuote(src, type = "cmd"), "--claude=demo",
                             paste0("--claude-demo-dir=", demo_dir)), stdout = TRUE, stderr = TRUE)
   # 案件フォルダ：ログ「[c1] Finished」の次の行（dir: <案件フォルダ>）から求める
-  dir <- sub("^dir: ", "", out[grep("\\[c1\\] Finished", out)[1] + 1L])
+  dir <- sub("^dir:", "", out[grep("\\[c1\\] Finished", out)[1] + 1L])
   if (is.na(dir)) stop("The run stopped:\n", paste(tail(out, 15), collapse = "\n"))
   list(console = out, dir = dir, results = read_c1_case_results(dir),
        r = jsonlite::fromJSON(file.path(dir, "r_validation.json")))
@@ -53,7 +53,7 @@ md_table <- function(df) {
 }
 # 画面出力のうち、処理の段階を示す行（[c1] のログ）と結果の行
 log_lines <- function(case) {
-  x <- grep("\\[c1\\]|^(file|dir): |^Payload draft saved|^Processing stopped|^(CP|Start|End|Pay leg|Receive leg):", case$console, value = TRUE)
+  x <- grep("\\[c1\\]|^(file|dir):|^Payload draft saved|^Processing stopped|^(CP|Start|End|Pay leg|Receive leg):", case$console, value = TRUE)
   # 手元のフォルダの場所は出さない（Windows は大文字小文字を区別しないので、区別せずに除く）
   x <- gsub("C:\\\\AnalyticFin\\\\Projects\\\\Curie\\\\|C:/AnalyticFin/Projects/Curie/", "", x, ignore.case = TRUE)
   substr(x, 1, 160)

@@ -65,7 +65,7 @@ root_pdfs <- function(cfg) list.files(cfg$inbox, pattern = "\\.pdf$")
 console <- utils::capture.output(c1_inbox_banner(config), print(scan1))
 
 check("Watched folder is the root itself", config$inbox == normalizePath(file.path(base, "box1"), winslash = "/"))
-check("Startup message shows the watched folder as dir:", any(console == paste0("dir: ", config$inbox)))
+check("Startup message shows the watched folder as dir:", any(console == paste0("dir:", config$inbox)))
 check("Console output is English only", !any(grepl("[　-ヿ一-鿿！-｠]", console)))
 check("All 6 PDFs processed and recorded (PDFs under processed/ ignored)", nrow(h) == 6L && !"z_in_processed.pdf" %in% h$original_name &&
         file.exists(file.path(config$processed, "z_in_processed.pdf")))

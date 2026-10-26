@@ -52,7 +52,7 @@ Pay leg:     JPY-TONA-OIS Compound + 35 bp / Quarterly
 Receive leg: DEMO Japan Credit Bond Index / Total Return / Quarterly
 
 Payload draft saved. NOT SENT.
-file: C:/AnalyticFin/Projects/Curie/output/c1_trs/cases/<案件ID>/result/aladdin_request_DRAFT.json
+file:C:/AnalyticFin/Projects/Curie/output/c1_trs/cases/<案件ID>/result/aladdin_request_DRAFT.json
 ```
 
 Pay／Receive は自社から見た向き（上の例は架空のデモ資料で、自社＝Curie Demo Fund 側）。自社の名前は対応表（`Curie_ALADDIN_MAP`）の
