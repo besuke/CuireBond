@@ -428,6 +428,18 @@ regenerate_c1_review_cases <- function(config, aladdin_map = read_aladdin_map_c1
 }
 .c1_watch_env <- new.env(parent = emptyenv())
 
+# 動いている監視プロセス（コマンドラインに監視スクリプトとこのフォルダーの settings.json があるもの）。
+# 起動したセッションでなくても（R を再起動した後でも）見つけられる
+.watch_workers_c1 <- function(w) {
+  target <- tolower(path_display_Curie(w$settings))
+  procs <- dplyr::filter(ps::ps(), tolower(.data$name) == "rscript.exe")
+  hit <- purrr::map_lgl(procs$ps_handle, \(h) tryCatch({
+    cmd <- tolower(gsub("\\\\", "/", ps::ps_cmdline(h)))
+    any(grepl("c1_inbox_watch_worker.r", cmd, fixed = TRUE)) && any(grepl(target, cmd, fixed = TRUE))
+  }, error = function(e) FALSE))
+  procs$ps_handle[hit]
+}
+
 # 監視を始める。interval_sec ごとに scan_c1_inbox_once() を呼ぶ（最長 max_hours 時間）。
 # 処理中の PDF があるときは、その1件が終わってから止まる
 # follow = TRUE なら、出来事をこの R セッション（RStudio のコンソール）に表示する（follow_c1_inbox_watch）
@@ -435,6 +447,11 @@ start_c1_inbox_watch <- function(config, interval_sec = 30, claude_mode = c("api
                                  follow = TRUE) {
   claude_mode <- match.arg(claude_mode)
   w <- .watch_paths_c1(config)
+  # 動いている印が残っていても、監視プロセスがなければ古い印として消す
+  if (dir.exists(w$lock) && !length(.watch_workers_c1(w))) {
+    unlink(c(w$lock, w$stop), recursive = TRUE)
+    say_Curie("Removed a stale watcher lock (no watcher process was running).")
+  }
   if (!dir.create(w$lock, showWarnings = FALSE)) {
     stop("The watcher is already running. Stop it with stop_c1_inbox_watch(config).\n", path_line_Curie(w$lock, "dir"), call. = FALSE)
   }
@@ -485,22 +502,30 @@ follow_c1_inbox_watch <- function(config, interval_sec = 2) {
 
 # 監視を止める（停止の印を置く。処理中の1件が終わり次第止まる）。force = TRUE ならすぐに止める
 # （処理中だった PDF は元の場所に残り、ロックを外すので次のスキャンで処理し直す）
+# 監視プロセスはコマンドラインで探すので、R を再起動した後のセッションからでも止められる
 stop_c1_inbox_watch <- function(config, force = FALSE) {
   w <- .watch_paths_c1(config)
-  writeLines(.now_c1(), w$stop)
-  p <- if (exists(config$root, envir = .c1_watch_env)) get(config$root, envir = .c1_watch_env) else NULL
-  if (force && !is.null(p) && p$is_alive()) {
-    p$kill()
-    unlink(c(w$lock, w$stop, list.files(config$locks, full.names = TRUE), list.files(config$work, full.names = TRUE)), recursive = TRUE)
+  workers <- .watch_workers_c1(w)
+  clear <- function() unlink(c(w$lock, w$stop, list.files(config$locks, full.names = TRUE), list.files(config$work, full.names = TRUE)),
+                             recursive = TRUE)
+  if (!length(workers)) {
+    clear()
+    say_Curie("The watcher was not running. Watcher lock cleared.")
+  } else if (force) {
+    purrr::walk(workers, \(h) tryCatch(ps::ps_kill(h), error = function(e) NULL))
+    still <- length(.watch_workers_c1(w))
+    if (!still) clear()
+    say_Curie(if (still) "Could not stop the watcher process. Try again." else "Watcher stopped.")
+  } else {
+    writeLines(.now_c1(), w$stop)
+    say_Curie("Stop requested. The watcher stops before the next scan (after the PDF in progress, if any).")
   }
-  say_Curie(if (force) "Watcher stopped." else "Stop requested. The watcher stops before the next scan.")
   invisible(TRUE)
 }
 
 c1_inbox_watch_status <- function(config) {
   w <- .watch_paths_c1(config)
-  p <- if (exists(config$root, envir = .c1_watch_env)) get(config$root, envir = .c1_watch_env) else NULL
-  list(running = dir.exists(w$lock), alive = if (is.null(p)) NA else p$is_alive(),
+  list(running = dir.exists(w$lock), alive = length(.watch_workers_c1(w)) > 0,
        stop_requested = file.exists(w$stop),
        last_scan = if (file.exists(w$heartbeat)) readLines(w$heartbeat, warn = FALSE)[1] else NA_character_, log = w$log)
 }
