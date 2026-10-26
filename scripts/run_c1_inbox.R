@@ -1,4 +1,4 @@
-# c1：フォルダー投入型の処理（RStudio から実行する例）。CURIE_derivative_contract validation
+# c1：フォルダー投入型の処理（RStudio から実行する例）。CURIE OTC Derivative
 # 監視フォルダーの直下に PDF を置くと、案件ごとに processed/<共通名>/ を作り、PDF と成果物を保存する。
 # Curieプロジェクトの最上位フォルダで source("R/load_Curie.R") したあとは、作業ディレクトリに依存しない。
 #

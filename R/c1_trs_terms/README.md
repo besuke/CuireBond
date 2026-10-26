@@ -90,10 +90,18 @@ stop_c1_inbox_watch(config)                         # 停止（処理中の1件�
 起動すると、最初に次を表示する（監視でも、ログ `logs/watch.log` の先頭に同じものを書く）。
 
 ```
-CURIE_derivative_contract validation を起動しました
-監視フォルダー：C:/AnalyticFin/temp/TRS_curie_PDF（直下の PDF だけ。processed などのサブフォルダーは対象外）
-保存先　　　　：C:/AnalyticFin/temp/TRS_curie_PDF/processed
+****** CURIE OTC Derivative ******
+
+Contract validation started.
+Watching PDF files directly under this folder (subfolders such as processed are excluded).
+dir:C:/AnalyticFin/temp/TRS_curie_PDF
+Completed cases are saved under this folder.
+dir:C:/AnalyticFin/temp/TRS_curie_PDF/processed
 ```
+
+監視中は、PDF の検出・処理開始・完了（CP／Start／End／Pay leg／Receive leg と保存先）・要確認・重複・失敗を、
+起動した RStudio のコンソールに表示する（監視プロセスが `logs/events.jsonl` に書き、セッションが later で読む）。
+R を再起動した後は `follow_c1_inbox_watch(config)` で表示を再開できる。
 
 | フォルダー・ファイル（監視フォルダーの下） | 内容 |
 |---|---|

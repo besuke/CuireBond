@@ -180,6 +180,34 @@ check("Locked PDF skipped (AI not called, original untouched)", busy$status == "
 gone <- quiet(process_c1_pdf(file.path(config5$inbox, "already_done.pdf"), config5, "demo", claude_ok, map))
 check("PDF already gone is skipped", gone$status == "スキップ")
 
+# ---- 監視の出来事を RStudio のコンソールに表示する（later で events.jsonl を読む） ------------------------------------
+# 1つの式にまとめる（トップレベルの式の合間に later の表示が走り、テストのコンソールに出ないように）
+local({
+config7 <- c1_inbox_config(file.path(base, "box7"), stable_sec = 0)
+w7 <- .watch_paths_c1(config7)
+dir.create(w7$lock)                                                           # 監視が動いている状態
+follow_out <- utils::capture.output(follow_c1_inbox_watch(config7, interval_sec = 0.1))
+variant(file.path(config7$inbox, "k_watched.pdf"), "k")
+writeBin(charToRaw("this is not a pdf"), file.path(config7$inbox, "l_broken.pdf"))
+quiet(scan_c1_inbox_once(config7, claude_mode = "demo", claude_demo_dir = claude_ok, aladdin_map = map, banner = FALSE))
+pump <- function() utils::capture.output(purrr::walk(1:5, \(i) later::run_now(0.3)))
+shown <- pump()
+unlink(w7$lock, recursive = TRUE)                                             # 監視が終わった
+shown_end <- pump()
+k_dir <- file.path(config7$processed, "TRS_20261006_20271008_DEMO_")
+check("Console follower: detection, start, completion and failure shown in English",
+      all(purrr::map_lgl(c("PDF detected. k_watched.pdf", "Processing started. k_watched.pdf", "Processing completed. k_watched.pdf",
+                           "Processing failed. l_broken.pdf"), \(p) any(grepl(p, shown, fixed = TRUE)))) &&
+        !any(grepl("[　-ヿ一-鿿！-｠]", c(follow_out, shown))))
+check("Console follower: completion shows CP, Start, End, Pay leg, Receive leg and dir:",
+      all(c("CP:          DEMO Securities Co., Ltd.", "Start:       2026-10-08", "End:         2027-10-08",
+            "Pay leg:     JPY-TONA-OIS Compound + 35 bp / Quarterly",
+            "Receive leg: DEMO Japan Credit Bond Index / Total Return / Quarterly", paste0("dir:", k_dir)) %in% shown))
+check("Console follower: failure shows the reason file as file:", any(grepl("^file:.*l_broken\\.pdf\\.reason\\.json$", shown)))
+check("Console follower stops when the watcher finishes", any(grepl("Watcher finished.", shown_end, fixed = TRUE)) &&
+        !exists(config7$root, envir = .c1_follow_env))
+})
+
 # ---- 相手先名の安全化 ------------------------------------------------------------------------------
 check("Safe name part", identical(purrr::map_chr(c("  Example Imperial", "A?B*C", "AB.  x", "Abc D Ltd.", "日本証券株式会社"), .safe_name_part_c1),
                                   c("Examp", "A_B_C", "AB___", "Abc D", "日本証券株")))

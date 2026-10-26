@@ -34,7 +34,8 @@ c1_inbox_config <- function(root = Sys.getenv("Curie_C1_INBOX_ROOT", ""), inbox 
   purrr::walk(dirs, \(d) dir.create(d, recursive = TRUE, showWarnings = FALSE))
   project_root <- normalizePath(project_root, winslash = "/")
   c(purrr::map(dirs, \(d) normalizePath(d, winslash = "/", mustWork = FALSE)),
-    list(root = root, history = file.path(root, "history.jsonl"), stable_sec = stable_sec, project_root = project_root,
+    list(root = root, history = file.path(root, "history.jsonl"), events = file.path(dirs$logs, "events.jsonl"),
+         stable_sec = stable_sec, project_root = project_root,
          instruction_path = file.path(project_root, "docs", "c1_trs_extraction_instructions.md")))
 }
 
@@ -172,6 +173,38 @@ read_c1_history <- function(config) {
   dplyr::bind_rows(empty, purrr::map(lines[nzchar(lines)], \(l) tibble::as_tibble(jsonlite::fromJSON(l))) |> purrr::list_rbind())
 }
 
+# ---- 通知（PDF の検出・処理開始・完了・要確認・重複・失敗） ----------------------------------------------
+# 監視は別の R プロセスで動くので、出来事を logs/events.jsonl に1行ずつ書き、RStudio のセッションが読んで表示する
+# （follow_c1_inbox_watch）。1回のスキャンでは、同じ出来事をその場で表示する（print.c1_inbox_scan）。
+# summary：完了時の取引の要約（CP・Start・End・Pay leg・Receive leg）。path・kind：表示する保存先（dir／file）
+.c1_event <- function(config, event, file, scan_id = "", path = "", kind = "file", reason = "", summary = NULL) {
+  ev <- list(time = format(Sys.time(), "%H:%M:%S"), scan_id = scan_id, event = event, file = file,
+             path = if (nzchar(path)) path_display_Curie(path) else "", kind = kind, reason = reason,
+             summary = if (length(summary)) as.list(summary) else NULL)
+  cat(jsonlite::toJSON(ev, auto_unbox = TRUE, null = "null"), "\n", file = config$events, append = TRUE, sep = "")
+}
+
+# 出来事の表示（英語）：時刻・文言・元のファイル名（理由）→ 取引の要約 → 改行して dir:／file: で保存先
+.say_c1_event <- function(ev) {
+  title <- c(detected = "PDF detected.", started = "Processing started.", completed = "Processing completed.",
+             review = "Saved for review.", duplicate = "Duplicate skipped.", failed = "Processing failed.")[[ev$event]]
+  say_Curie(ev$time, " ", title, " ", ev$file, if (nzchar(ev$reason %||% "")) paste0(" (", ev$reason, ")"))
+  if (length(ev$summary)) {
+    s <- unlist(ev$summary)
+    say_Curie(paste0(sprintf("%-13s", paste0(names(s), ":")), s, collapse = "\n"))
+  }
+  if (nzchar(ev$path %||% "")) say_Curie(ev$kind, ":", ev$path)
+}
+
+# events.jsonl の行（書きかけの最後の行は読まない）
+.read_c1_events <- function(config) {
+  if (!file.exists(config$events)) return(list())
+  rows <- purrr::map(readLines(config$events, encoding = "UTF-8", warn = FALSE),
+                     \(l) tryCatch(jsonlite::fromJSON(l, simplifyVector = FALSE), error = function(e) NULL))
+  ok <- purrr::map_lgl(rows, Negate(is.null))
+  rows[seq_len(if (all(ok)) length(rows) else which(!ok)[1] - 1L)]
+}
+
 # ---- 1件の処理 ------------------------------------------------------------------------------
 # PDF 1件を処理し、結果を1行の表で返す（状態：保存済み／要確認／重複／失敗／スキップ）。
 # グローバル変数や共有の一時ファイルは使わない（引数と自分の job フォルダーだけを使う）ので、並列のワーカーからも呼べる。
@@ -210,9 +243,11 @@ process_c1_pdf <- function(pdf, config, claude_mode = c("api", "demo"), claude_d
   if (nrow(done)) {
     kept <- file.path(config$duplicates, paste0(job_id, "_", original))
     if (!file.rename(pdf, kept) && file.copy(pdf, kept)) file.remove(pdf)
-    return(record("重複", saved_name = done$saved_name, saved_dir = done$saved_dir,
-                  reason = paste0("same content as ", done$original_name, " (AI not called)")))
+    reason <- paste0("same content as ", done$original_name, "; AI not called")
+    .c1_event(config, "duplicate", original, scan_id, path = done$saved_dir, kind = "dir", reason = reason)
+    return(record("重複", saved_name = done$saved_name, saved_dir = done$saved_dir, reason = reason))
   }
+  .c1_event(config, "started", original, scan_id)
 
   # 3. 読解・検証 → 共通名 → 作業フォルダーで成果物 → 保存先へコピー → すべて終わってから元の PDF を消す
   job_dir <- file.path(config$work, job_id)
@@ -231,13 +266,16 @@ process_c1_pdf <- function(pdf, config, claude_mode = c("api", "demo"), claude_d
     saved <- .save_c1_case(case, config, naming, job_dir,
                            list(pdf = case$results$source_path, original = original, sha256 = sha, job_id = job_id))
     removed <- file.remove(pdf)
-    record(saved$status, saved_name = saved$name, saved_dir = saved$dest,
-           reason = paste(c(if (saved$status == "要確認") unlist(naming$missing),
-                            if (!removed) "original PDF could not be deleted (moved to duplicates on the next scan)"), collapse = "; "))
+    reason <- paste(c(if (saved$status == "要確認") unlist(naming$missing),
+                      if (!removed) "original PDF could not be deleted (moved to duplicates on the next scan)"), collapse = "; ")
+    .c1_event(config, if (saved$status == "要確認") "review" else "completed", original, scan_id, path = saved$dest, kind = "dir",
+              reason = reason, summary = deal_summary_c1(case$validation$conditions, aladdin_map))
+    record(saved$status, saved_name = saved$name, saved_dir = saved$dest, reason = reason)
   }, error = function(e) {
     reason_file <- file.path(config$failed, paste0(job_id, "_", original, ".reason.json"))
     jsonlite::write_json(list(original_name = original, original_path = pdf, sha256 = sha, job_id = job_id, time = .now_c1(),
                               reason = conditionMessage(e)), reason_file, auto_unbox = TRUE, pretty = TRUE)
+    .c1_event(config, "failed", original, scan_id, path = reason_file, kind = "file", reason = conditionMessage(e))
     record("失敗", saved_dir = reason_file, reason = conditionMessage(e))
   })
 }
@@ -245,7 +283,8 @@ process_c1_pdf <- function(pdf, config, claude_mode = c("api", "demo"), claude_d
 # ---- フォルダーの処理 -------------------------------------------------------------------------
 # 起動メッセージ：どのフォルダーを監視し、どこへ保存するか（extra：追加の行）
 c1_inbox_banner <- function(config, extra = NULL) {
-  say_Curie("CURIE_derivative_contract validation started.")
+  say_Curie("****** CURIE OTC Derivative ******\n")
+  say_Curie("Contract validation started.")
   say_path_Curie("Watching PDF files directly under this folder (subfolders such as processed are excluded).", config$inbox, "dir")
   say_path_Curie("Completed cases are saved under this folder.", config$processed, "dir")
   if (length(extra)) say_Curie(paste(extra, collapse = "\n"))
@@ -270,6 +309,7 @@ c1_inbox_banner <- function(config, extra = NULL) {
 scan_c1_inbox_once <- function(config, ..., snapshot = NULL, retry_failed = FALSE, banner = TRUE, .walk = purrr::walk) {
   if (banner) c1_inbox_banner(config)
   scan_id <- paste0("scan_", format(Sys.time(), "%Y%m%d_%H%M%S"), "_", paste(as.character(openssl::rand_bytes(2)), collapse = ""))
+  seen <- snapshot$path %||% character()   # 前回のスキャンで見た PDF（新しく現れた PDF を「検出」として知らせる）
   if (is.null(snapshot)) {
     snapshot <- .inbox_snapshot_c1(config$inbox)
     if (nrow(snapshot) && config$stable_sec > 0) Sys.sleep(config$stable_sec)
@@ -277,6 +317,8 @@ scan_c1_inbox_once <- function(config, ..., snapshot = NULL, retry_failed = FALS
   now <- Sys.time()
   snap <- .inbox_snapshot_c1(config$inbox, snapshot, now)
   ready <- dplyr::filter(snap, as.numeric(now) - .data$since >= config$stable_sec)
+  purrr::walk(setdiff(snap$path, seen), \(p) .c1_event(config, "detected", basename(p), scan_id, path = p,
+                                                        reason = if (p %in% ready$path) "" else "waiting until the copy is complete"))
   # 最後の状態が「失敗」の内容は保留する
   history <- read_c1_history(config)
   failed_sha <- if (retry_failed) character() else history |>
@@ -288,7 +330,8 @@ scan_c1_inbox_once <- function(config, ..., snapshot = NULL, retry_failed = FALS
   .walk(todo$path, \(p) process_c1_pdf(p, config, ..., scan_id = scan_id))
 
   results <- read_c1_history(config) |> dplyr::filter(.data$scan_id == .env$scan_id)
-  out <- list(scan_id = scan_id, results = results, skipped = setdiff(basename(todo$path), results$original_name),
+  events <- purrr::keep(.read_c1_events(config), \(ev) identical(ev$scan_id, scan_id))
+  out <- list(scan_id = scan_id, results = results, events = events, skipped = setdiff(basename(todo$path), results$original_name),
               held = basename(held$path), waiting = basename(setdiff(snap$path, ready$path)),
               snapshot = dplyr::filter(snap, file.exists(.data$path)))
   class(out) <- "c1_inbox_scan"
@@ -302,18 +345,12 @@ scan_c1_inbox_once <- function(config, ..., snapshot = NULL, retry_failed = FALS
   unname(dplyr::coalesce(en[status], status))
 }
 
-# 1件の結果：文言（元のファイル名と理由）の後に、保存先を dir:／file: で出す
-.say_c1_result <- function(original_name, status, saved_dir, reason, ...) {
-  msg <- paste0(.status_en_c1(status), ". ", original_name, if (nzchar(reason)) paste0(" (", reason, ")"))
-  if (nzchar(saved_dir)) say_path_Curie(msg, saved_dir) else say_Curie(msg)
-}
-
 print.c1_inbox_scan <- function(x, ...) {
-  if (!nrow(x$results) && !length(x$skipped) && !length(x$waiting) && !length(x$held)) {
+  if (!length(x$events) && !nrow(x$results) && !length(x$skipped) && !length(x$waiting) && !length(x$held)) {
     say_Curie("No PDF files to process.")
     return(invisible(x))
   }
-  purrr::pwalk(x$results, .say_c1_result)
+  purrr::walk(x$events, .say_c1_event)
   purrr::walk(x$skipped, \(f) say_Curie("Skipped. ", f, " (being processed; checked again on the next scan)"))
   purrr::walk(x$held, \(f) say_Curie("On hold. ", f, " (failed previously; see failed/. Use retry_failed = TRUE to retry)"))
   purrr::walk(x$waiting, \(f) say_Curie("Waiting. ", f, " (size or modified time still changing; may be copying)"))
@@ -391,7 +428,9 @@ regenerate_c1_review_cases <- function(config, aladdin_map = read_aladdin_map_c1
 
 # 監視を始める。interval_sec ごとに scan_c1_inbox_once() を呼ぶ（最長 max_hours 時間）。
 # 処理中の PDF があるときは、その1件が終わってから止まる
-start_c1_inbox_watch <- function(config, interval_sec = 30, claude_mode = c("api", "demo"), claude_demo_dir = NULL, max_hours = 24) {
+# follow = TRUE なら、出来事をこの R セッション（RStudio のコンソール）に表示する（follow_c1_inbox_watch）
+start_c1_inbox_watch <- function(config, interval_sec = 30, claude_mode = c("api", "demo"), claude_demo_dir = NULL, max_hours = 24,
+                                 follow = TRUE) {
   claude_mode <- match.arg(claude_mode)
   w <- .watch_paths_c1(config)
   if (!dir.create(w$lock, showWarnings = FALSE)) {
@@ -409,7 +448,37 @@ start_c1_inbox_watch <- function(config, interval_sec = 30, claude_mode = c("api
   c1_inbox_banner(config)
   say_Curie("Watcher started. Scan interval: ", interval_sec, " s (separate R process).")
   say_path_Curie("Watcher log.", w$log, "file")
+  if (follow) follow_c1_inbox_watch(config)
   invisible(p)
+}
+
+.c1_follow_env <- new.env(parent = emptyenv())
+
+# 監視の出来事（PDF の検出・処理開始・完了・要確認・重複・失敗）を、この R セッション（RStudio のコンソール）に表示する。
+# later で interval_sec 秒ごとに events.jsonl の新しい行を読む（コンソールは使える）。監視が終わると表示も止まる。
+# R を再起動した後や、別のセッションから見るときは follow_c1_inbox_watch(config) を呼ぶ
+follow_c1_inbox_watch <- function(config, interval_sec = 2) {
+  w <- .watch_paths_c1(config)
+  state <- new.env()
+  state$n <- length(.read_c1_events(config))   # これまでの出来事は表示しない
+  assign(config$root, state, envir = .c1_follow_env)   # 呼び直すと、前の表示は止まる
+  tick <- function() {
+    if (!identical(get0(config$root, envir = .c1_follow_env), state)) return(invisible())
+    events <- .read_c1_events(config)
+    if (length(events) > state$n) {
+      purrr::walk(events[(state$n + 1L):length(events)], .say_c1_event)
+      state$n <- length(events)
+    }
+    if (!dir.exists(w$lock)) {
+      say_Curie(format(Sys.time(), "%H:%M:%S"), " Watcher finished.")
+      rm(list = config$root, envir = .c1_follow_env)
+      return(invisible())
+    }
+    later::later(tick, interval_sec)
+  }
+  later::later(tick, interval_sec)
+  say_Curie("Watcher events (PDF detected, processing started, completed, failed) are shown in this console.")
+  invisible(TRUE)
 }
 
 # 監視を止める（停止の印を置く。処理中の1件が終わり次第止まる）。force = TRUE ならすぐに止める
