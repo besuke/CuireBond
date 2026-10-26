@@ -58,7 +58,7 @@ html_to_pdf_c1 <- function(html_path, pdf_path) {
   html_url <- paste0("file:///", normalizePath(html_path, winslash = "/"))
   status <- system2(.find_browser_c1(),
                     c("--headless=new", "--disable-gpu", "--no-pdf-header-footer",
-                      paste0("--user-data-dir=", q(profile)), paste0("--print-to-pdf=", q(pdf_path)), q(html_url)),
+                      paste0("--user-data-dir=", q(profile)), paste0("--print-to-pdf=", q(normalizePath(pdf_path, winslash = "/", mustWork = FALSE))), q(html_url)),
                     stdout = FALSE, stderr = FALSE)
   if (!file.exists(pdf_path)) stop("HTMLをPDFへ変換できませんでした（ブラウザの終了コード ", status, "）: ", html_path, call. = FALSE)
   invisible(pdf_path)

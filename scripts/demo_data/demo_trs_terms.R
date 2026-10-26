@@ -169,3 +169,27 @@ create_demo_trs_terms_c1 <- function(dir) {
   readr::write_csv(overrides, overrides_path)
   list(pdf_dir = pdf_dir, pdf = pdf, extractions = paths, overrides = overrides_path)
 }
+
+write_demo_trs_html_c1 <- function(dir) {
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  lines <- .demo_trs_lines_c1()
+  esc <- function(x) gsub("<", "&lt;", gsub("&", "&amp;", x, fixed = TRUE), fixed = TRUE)
+  html <- c("<!DOCTYPE html>", "<html><head><meta charset=\"utf-8\"><title>DEMO TRS confirmation</title></head><body>",
+            paste0("<p>", esc(c(lines$page1, lines$page2)), "</p>"), "</body></html>")
+  path <- file.path(dir, "DEMO_TRS_confirmation.htm")
+  writeLines(html, path, useBytes = TRUE)
+  path
+}
+
+# 文字を持たない（画像だけの）PDF：OCR のテスト用。デモPDFのページを画像にし、Chrome で PDF に印刷する
+write_demo_trs_scanned_pdf_c1 <- function(dir, pdf) {
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  pngs <- pdftools::pdf_convert(pdf, format = "png", dpi = 200,
+                                filenames = file.path(dir, sprintf("scan_p%d.png", seq_len(pdftools::pdf_info(pdf)$pages))), verbose = FALSE)
+  html <- file.path(dir, "scan.html")
+  writeLines(c("<!DOCTYPE html><html><head><style>@page{margin:0} img{width:100%;display:block;page-break-after:always}</style></head><body>",
+               paste0("<img src=\"", basename(pngs), "\">"), "</body></html>"), html, useBytes = TRUE)
+  out <- file.path(dir, "DEMO_TRS_scanned.pdf")
+  html_to_pdf_c1(html, out)
+  out
+}

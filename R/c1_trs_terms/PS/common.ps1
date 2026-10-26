@@ -15,19 +15,24 @@
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# 画面出力は UTF-8 に固定する（RStudio から起動するとコンソールがなく、既定が CP932 になって文字化けするため）
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 # 終了コード（R はこの値で状態を判断する）
 $script:ExitCodes = [ordered]@{
   ok                    = 0   # 成果物あり（R の検証待ち）
   error                 = 1   # 想定外のエラー
   not_connected         = 2   # 未接続（接続情報の不足・認証の失敗）
-  document_access       = 3   # 資料にアクセスできない（取得・版の確認に失敗）
-  copilot_access        = 4   # Copilot が資料を読めない・API の失敗
+  document_access       = 3   # 取得失敗（資料を取得できない・版の確認に失敗）
+  copilot_access        = 4   # Copilot 読解失敗（資料を読めない・API の失敗）
   copilot_format        = 5   # Copilot の回答形式が不正
-  claude_access         = 6   # Claude が資料を読めない・実行の失敗
+  claude_access         = 6   # Claude 読解失敗（資料を読めない・実行の失敗）
   claude_format         = 7   # Claude の回答形式が不正
+  reading_data          = 8   # 読解用データを作れない（本文抽出・OCR の失敗）
 }
-$script:StateOfExit = @{ 0 = '要確認'; 1 = '失敗'; 2 = '未接続'; 3 = '読解失敗'; 4 = '読解失敗'; 5 = '回答形式不正'; 6 = '読解失敗'; 7 = '回答形式不正' }
+$script:StateOfExit = @{ 0 = '要確認'; 1 = '失敗'; 2 = '未接続'; 3 = '取得失敗'; 4 = '読解失敗'; 5 = '回答形式不正'
+                         6 = '読解失敗'; 7 = '回答形式不正'; 8 = '読解用データ作成失敗' }
 
 class C1Failure : System.Exception {
   [string]$Kind
@@ -43,7 +48,7 @@ function Write-C1Text([string]$Path, [string]$Text, [switch]$Bom) {
   if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
   [System.IO.File]::WriteAllText($Path, $Text, [System.Text.UTF8Encoding]::new([bool]$Bom))
 }
-function Write-C1Json([string]$Path, $Object) { Write-C1Text $Path ($Object | ConvertTo-Json -Depth 30) }
+function Write-C1Json([string]$Path, $Object) { Write-C1Text $Path (ConvertTo-Json -InputObject $Object -Depth 30) }   # 要素1つの配列も配列のまま書く
 function Read-C1Json([string]$Path) { Get-Content -LiteralPath $Path -Raw -Encoding utf8 | ConvertFrom-Json -Depth 30 }
 function Get-C1Sha256([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLower() }
 
@@ -208,4 +213,89 @@ function Add-C1PopplerPath {
   $bin = $candidates | Where-Object { $_ -and (Test-Path (Join-Path $_ 'pdftoppm.exe')) } | Select-Object -First 1
   if ($bin) { $env:Path = "$bin;$env:Path"; return $true }
   return $false
+}
+
+# ---- 入力資料の取得（公開URL・ローカルファイル）-------------------------------------------
+# URLから追跡用のパラメータ（utm_ で始まるもの）を除く。ほかのパラメータは残す
+function Remove-C1TrackingParams([string]$Url) {
+  if ($Url -notmatch '^https?://' -or $Url -notmatch '\?') { return $Url }
+  $fragment = if ($Url -match '#') { $Url.Substring($Url.IndexOf('#')) } else { '' }
+  $base = $Url.Split('?')[0]
+  $query = $Url.Substring($Url.IndexOf('?') + 1).Split('#')[0]
+  $kept = @($query.Split('&') | Where-Object { $_ -and $_ -notmatch '^utm_' })
+  return $base + $(if ($kept.Count) { '?' + ($kept -join '&') } else { '' }) + $fragment
+}
+
+# 形式の判定：中身（先頭のバイト）を優先し、Content-Type と拡張子も記録する
+function Get-C1FormatRecord([string]$Path, [string]$ContentType, [string]$NameOrUrl) {
+  $magic = Get-C1DocumentKind $Path
+  $ext = [IO.Path]::GetExtension(($NameOrUrl -split '[?#]')[0]).ToLower()
+  $byExt = switch -Regex ($ext) { '^\.pdf$' { 'pdf' } '^\.html?$' { 'html' } default { $null } }
+  $byType = switch -Regex ($ContentType ?? '') { 'application/pdf' { 'pdf' } 'text/html|application/xhtml' { 'html' } default { $null } }
+  $kind = $magic ?? $byType ?? $byExt
+  [ordered]@{ kind = $kind; by_content = $magic; by_content_type = $byType; by_extension = $byExt
+              content_type = $ContentType; extension = $ext
+              note = if ($magic -and (($byType -and $byType -ne $magic) -or ($byExt -and $byExt -ne $magic))) { '中身と Content-Type／拡張子が異なる（中身で判定）' } else { '' } }
+}
+
+# 公開URL・ローカルファイルの取得（アクセス制限は回避しない。取得できなければ理由を返す）
+function Save-C1PublicSource([string]$Source, [string]$Path) {
+  $rec = [ordered]@{ http_status = $null; content_type = $null; final_url = $null }
+  if ($Source -match '^https?://') {
+    $ua = $env:CURIE_HTTP_USER_AGENT ?? 'CURIE-c1 (TRS terms reader)'
+    $resp = Invoke-WebRequest -Uri $Source -OutFile $Path -PassThru -TimeoutSec 300 -UserAgent $ua -SkipHttpErrorCheck -MaximumRedirection 5
+    $rec.http_status = [int]$resp.StatusCode
+    $rec.content_type = ($resp.Headers['Content-Type'] | Select-Object -First 1)
+    $rec.final_url = $resp.BaseResponse.RequestMessage.RequestUri.AbsoluteUri
+    if ($rec.http_status -ne 200) {
+      $hint = if ($rec.http_status -eq 403 -and -not $env:CURIE_HTTP_USER_AGENT) {
+        '（アクセスを拒否されました）。公開元によっては、名前と連絡先メールを含む User-Agent を求めます（SEC など）。その場合は環境変数 CURIE_HTTP_USER_AGENT="氏名 メールアドレス" を設定してください。アクセス制限の回避はしません'
+      } elseif ($rec.http_status -in 401, 403) { '。アクセスが許可されていません（アクセス制限の回避はしません）' } else { '' }
+      Remove-Item -LiteralPath $Path -ErrorAction SilentlyContinue
+      throw ("HTTP {0}{1}" -f $rec.http_status, $hint)
+    }
+  } else {
+    if (-not (Test-Path -LiteralPath $Source)) { throw "ファイルがありません: $Source" }
+    Copy-Item -LiteralPath $Source -Destination $Path -Force
+  }
+  return $rec
+}
+
+# ---- 読解用データ（本文。ページごと）------------------------------------------------------
+# PDF：poppler の pdftotext でページごとに抜き出す。文字がほとんどないページは Windows 標準の OCR で読む
+# HTML：script・style を除き、段落・行・セルの境目を改行にして本文にする（全体を1ページとする）
+function Get-C1ReadingPages([string]$Path, [string]$Kind, [string]$WorkDir, [int]$MinChars = 20) {
+  New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+  if ($Kind -eq 'html') {
+    $html = Get-Content -LiteralPath $Path -Raw -Encoding utf8
+    $html = [regex]::Replace($html, '(?is)<(script|style)[^>]*>.*?</\1>', ' ')
+    $html = [regex]::Replace($html, '(?i)<\s*(br|/p|/div|/tr|/li|/h[1-6]|/table)\b[^>]*>', "`n")
+    $html = [regex]::Replace($html, '(?i)</t[dh]\s*>', "`t")
+    $text = [System.Net.WebUtility]::HtmlDecode([regex]::Replace($html, '<[^>]+>', ' '))
+    $text = (($text -split "`n" | ForEach-Object { ($_ -replace '[ \t ]+', ' ').Trim() } | Where-Object { $_ }) -join "`n")
+    return @([ordered]@{ page = 1; method = 'html_text'; chars = $text.Length; text = $text })
+  }
+  if (-not (Add-C1PopplerPath)) { throw 'poppler（pdftotext・pdftoppm）がないため、PDF の本文を抜き出せません' }
+  $txt = Join-Path $WorkDir 'pdftotext.txt'
+  & pdftotext -layout -enc UTF-8 $Path $txt 2>$null
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path $txt)) { throw "pdftotext が失敗しました（終了コード $LASTEXITCODE）" }
+  $pages = (Get-Content -LiteralPath $txt -Raw -Encoding utf8) -split "`f"
+  if ($pages.Count -gt 1 -and -not $pages[-1].Trim()) { $pages = $pages[0..($pages.Count - 2)] }
+  $ocr = Join-Path $PSScriptRoot 'ocr_windows.ps1'
+  $i = 0
+  return @($pages | ForEach-Object {
+    $i++
+    $text = $_.TrimEnd()
+    $method = 'pdf_text'
+    if (($text -replace '\s', '').Length -lt $MinChars) {
+      # 文字のないページ（スキャン画像など）は OCR。結果には誤読がありうるため、method に記録する
+      $png = Join-Path $WorkDir ("ocr_p{0}" -f $i)
+      & pdftoppm -png -r 300 -f $i -l $i -singlefile $Path $png 2>$null
+      $out = "$png.txt"
+      $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ocr -ImagePath "$png.png" -OutPath $out 2>&1
+      if ($LASTEXITCODE -eq 0 -and (Test-Path $out)) { $text = Get-Content -LiteralPath $out -Raw -Encoding utf8; $method = 'ocr_windows' }
+      else { $method = 'ocr_failed' }
+    }
+    [ordered]@{ page = $i; method = $method; chars = ($text ?? '').Length; text = ($text ?? '') }
+  })
 }

@@ -38,14 +38,27 @@
   )
 }
 
+# 原資料の本文（ページごと）。R が独自に抜き出す（PDF は pdftools、HTML は xml2 で全体を1ページ）
+.source_pages_c1 <- function(path, kind) {
+  if (identical(kind, "html")) {
+    doc <- xml2::read_html(path)
+    xml2::xml_remove(xml2::xml_find_all(doc, "//script|//style"))
+    return(paste(xml2::xml_text(xml2::xml_find_all(doc, "//body//text()")), collapse = " "))
+  }
+  pdftools::pdf_text(path)
+}
+
 # 原文引用の実在確認（ページ指定。空白・引用符の違いは吸収する）
-.quote_checks_c1 <- function(conditions, pdf) {
-  if (is.na(pdf)) return(rep("PDFなし", nrow(conditions)))
-  pages <- .normalize_text_c1(pdftools::pdf_text(pdf))
+# OCR で読んだページは、原資料に文字がないため照合できない（要確認として扱う）
+.quote_checks_c1 <- function(conditions, source_path, kind, reading_pages = NULL) {
+  if (is.na(source_path)) return(rep("原資料なし", nrow(conditions)))
+  pages <- .normalize_text_c1(.source_pages_c1(source_path, kind))
+  ocr_pages <- if (is.null(reading_pages)) integer() else reading_pages$page[startsWith(reading_pages$method, "ocr")]
   purrr::map2_chr(conditions$source_page, conditions$quote, function(p, q) {
     if (!nzchar(q)) return("引用なし")
     target <- .normalize_text_c1(q)
     p <- suppressWarnings(as.integer(p))
+    if (!is.na(p) && p %in% ocr_pages) return("OCRページ（照合できない）")
     if (!is.na(p) && p >= 1L && p <= length(pages) && grepl(target, pages[p], fixed = TRUE)) return("一致")
     other <- which(purrr::map_lgl(pages, \(t) grepl(target, t, fixed = TRUE)))
     if (length(other)) paste0("別のページにあり（p.", paste(other, collapse = ","), "）") else "PDFに見つからない"
@@ -101,7 +114,7 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
       期待する単位 = .expected_unit_c1(.data$item_id, dplyr::coalesce(.data$type, ""), notional_ccy),
       型の確認 = dplyr::if_else(.data$value_status == "stated", .type_ok_c1(.data$value, dplyr::coalesce(.data$type, "text")), NA),
       単位の確認 = dplyr::if_else(.data$value_status == "stated" & nzchar(.data$期待する単位), .data$unit == .data$期待する単位, NA),
-      引用の実在確認 = .quote_checks_c1(cond, results$pdf)
+      引用の実在確認 = .quote_checks_c1(cond, results$source_path, results$source_kind, results$reading_pages)
     )
 
   # CSV と JSON の一致
@@ -126,7 +139,8 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
   fpml <- results$files[["fpml"]]
   fpml_check <- if (!is.na(fpml)) validate_fpml_c1(fpml, xsd_path) else NULL
   version_ok <- if (is.null(m$sharepoint_unchanged)) NA else isTRUE(m$sharepoint_unchanged)
-  pdf_sha_ok <- if (is.na(results$pdf)) FALSE else identical(pdf_sha256_c1(results$pdf), m$document$sha256)
+  pdf_sha_ok <- if (is.na(results$source_path)) FALSE else identical(pdf_sha256_c1(results$source_path), m$document$sha256)
+  ocr_used <- !is.null(results$reading_pages) && any(startsWith(results$reading_pages$method, "ocr"))
 
   checks <- dplyr::bind_rows(
     run,
@@ -146,10 +160,16 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
     .check_row_c1("確認", "確認状態の値", all(cond$review_status %in% .c1_review_levels), unique(setdiff(cond$review_status, .c1_review_levels))),
     .check_row_c1("確認", "修正した項目に理由がある", !any(cond$review_status == "corrected" & !nzchar(cond$review_note)),
                   cond$item_id[cond$review_status == "corrected" & !nzchar(cond$review_note)]),
+    .check_row_c1("確認", "修正（corrected）は Copilot と値が違う項目だけ",
+                  !any(cond$review_status == "corrected" & cond$value == cond$copilot_value & nzchar(cond$value)),
+                  cond$item_id[cond$review_status == "corrected" & cond$value == cond$copilot_value & nzchar(cond$value)],
+                  na_label = "要確認"),
     .check_row_c1("確認", "必須項目が原文で確認された", !length(unresolved_req), unresolved_req),
-    .check_row_c1("根拠", "原文引用が指定ページにある", all(cond$引用の実在確認 %in% c("一致", "引用なし")),
-                  paste0(cond$item_id, "：", cond$引用の実在確認)[!cond$引用の実在確認 %in% c("一致", "引用なし")]),
-    .check_row_c1("版", "読ませた PDF が記録と一致（SHA-256）", pdf_sha_ok),
+    .check_row_c1("根拠", "原文引用が指定ページにある", all(cond$引用の実在確認 %in% c("一致", "引用なし", "OCRページ（照合できない）")),
+                  paste0(cond$item_id, "：", cond$引用の実在確認)[!cond$引用の実在確認 %in% c("一致", "引用なし", "OCRページ（照合できない）")]),
+    .check_row_c1("根拠", "OCR で読んだページの引用（原資料で照合できない）", if (ocr_used) NA else TRUE,
+                  if (ocr_used) paste0("OCR のページ：p.", paste(results$reading_pages$page[startsWith(results$reading_pages$method, "ocr")], collapse = ","), "。人が原資料で確認する") else "OCR なし", na_label = "要確認"),
+    .check_row_c1("版", "原資料が取得時の記録と一致（SHA-256）", pdf_sha_ok),
     .check_row_c1("版", "読解中に SharePoint 上の資料が変わっていない（eTag）", version_ok,
                   if (is.na(version_ok)) "SharePoint 以外の資料" else "", na_label = "対象外"),
     if (is.null(fpml_check)) .check_row_c1("FpML", "XML構文", FALSE, "fpml.xml がない") else dplyr::bind_rows(
@@ -159,7 +179,7 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
       .fpml_vs_csv_c1(fpml, results$conditions)),
     .check_row_c1("出力", "Aladdin 用JSON", NA, "Aladdin の仕様が提示されていないため作らない", na_label = "未作成")
   )
-  failed <- any(checks$結果 == "不合格")
+  failed <- any(checks$結果 %in% c("不合格", "要確認"))
   demo <- c(copilot = "Copilot", claude = "Claude")[names(modes)[modes %in% "demo"]]
   state <- if (failed || length(unresolved_req)) "要確認" else if (length(demo)) {
     paste0("デモ（検証は合格。", paste(demo, collapse = "・"), " はモックで、実接続ではない）")
@@ -173,12 +193,16 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
 write_c1_case_excel <- function(results, validation, path = file.path(results$case_dir, "result", "c1_validation.xlsx")) {
   m <- results$manifest
   run <- tibble::tibble(
-    項目 = c("案件ID", "共有URL", "読み方", "Copilot のモード", "Claude のモード", "Copilot API の注意", "状態（R の検証後）",
-           "PowerShell の状態", "終了コード", "資料の SHA-256", "SharePoint の eTag（読解前）", "会話ID", "Claude の費用（目安 USD）"),
-    値 = c(m$case_id %|% "", m$shared_url %|% "", m$reading %|% "", m$copilot_mode %|% "", m$claude_mode %|% "",
+    項目 = c("案件ID", "取得元", "貼り付けた入力", "入力の種類", "取得日時", "HTTP の状態", "Content-Type", "形式（中身で判定）",
+           "原資料の SHA-256", "読解用データ", "読み方", "Copilot のモード", "Copilot への資料の渡し方", "Claude のモード",
+           "Copilot API の注意", "状態（R の検証後）", "PowerShell の状態", "終了コード", "SharePoint の eTag（読解前）",
+           "会話ID", "Claude の費用（目安 USD）"),
+    値 = c(m$case_id %|% "", m$shared_url %|% "", m$pasted_input %|% "", m$source_type %|% "",
+          m$acquisition$retrieved_at %|% "", as.character(m$acquisition$http_status %|% ""), m$acquisition$content_type %|% "",
+          m$acquisition$format$kind %|% "", m$document$sha256 %|% "", m$stages$reading_data %|% "", m$reading %|% "",
+          m$copilot_mode %|% "", m$copilot$document_passed_as %|% "", m$claude_mode %|% "",
           m$copilot_note %|% "", validation$state, results$ps_state %|% "", as.character(results$exit_code),
-          m$document$sha256 %|% "", m$sharepoint_before$e_tag %|% "", m$copilot$conversation_id %|% "",
-          as.character(m$claude$cost_usd %|% ""))
+          m$sharepoint_before$e_tag %|% "", m$copilot$conversation_id %|% "", as.character(m$claude$cost_usd %|% ""))
   )
   conditions <- validation$conditions
   if (!is.null(conditions)) {

@@ -1,7 +1,7 @@
 # c1 Claude による原文照合と FpML 作成。
 #
 # Claude Code を非対話モード（claude -p）で起動し、作業フォルダの次のファイルを渡す。
-#   document.pdf            … SharePoint から取得した資料（Copilot に読ませたものと同じ版。SHA-256 で確認済み）
+#   document.pdf／document.htm … 取得した原資料（Copilot に渡したものと同じ。SHA-256 で確認済み。HTML は HTML のまま）
 #   copilot_extraction.json … Copilot の一次読解
 #   instructions.md         … 抽出指示書（docs/c1_trs_extraction_instructions.md）
 # Claude は Copilot の値をそのまま採用せず、原文で1項目ずつ確かめ、修正点・根拠・未確定事項を記録する。
@@ -18,7 +18,8 @@ function New-C1ClaudePrompt($Document) {
   @(
     '# CURIE c1：Copilot の一次読解の原文照合と FpML 作成'
     ''
-    'このフォルダの `document.pdf`（原文）、`copilot_extraction.json`（Microsoft 365 Copilot の一次読解）、`instructions.md`（抽出指示）を読んでください。'
+    "このフォルダの ``$($Document.local_name)``（原文）、``copilot_extraction.json``（Microsoft 365 Copilot の一次読解）、``instructions.md``（抽出指示）を読んでください。"
+    'page は PDF のページ番号。HTML の資料は全体を1ページ（page=1）とし、location に条項名・見出しを書くこと。'
     'Copilot の値をそのまま採用しないこと。すべての項目を原文で確かめ、値・根拠ページ・原文の引用を自分で確認すること。推測で補わないこと。'
     ''
     '## 作るファイル（このフォルダに保存）'
@@ -27,7 +28,8 @@ function New-C1ClaudePrompt($Document) {
     '   - `unit`：値の単位（日付は date、スプレッドは bp、下限は percent、日数は business_days、金額は通貨コード、単位がなければ空）'
     '   - `location`：ページ内の位置（条項名・見出しなど。分かる範囲）'
     '   - `copilot_value`：Copilot の値（なければ null）'
-    '   - `review_status`：confirmed（原文どおり）／corrected（Copilot を修正）／unresolved（空欄・選択肢・解釈不明で未確定）／not_found（記載なし）'
+    '   - `review_status`：confirmed（値が原文どおり）／corrected（Copilot の値を修正）／unresolved（空欄・選択肢・解釈不明で未確定）／not_found（記載なし）'
+    '     corrected は値を直したときだけ。値が正しく、ページ・引用・位置だけを直した場合は confirmed とし、review_note に「根拠位置を修正」と書く'
     '   - `review_note`：修正の理由、未確定の理由'
     '   - instructions.md のすべての項目を出すこと。Copilot が出していない項目も原文で確かめて加える'
     '2. `fpml.xml`：reviewed.json の value_status=stated の値だけで作る FpML 5.x confirmation の returnSwap（returnLeg と interestLeg）。'
@@ -42,22 +44,22 @@ function New-C1ClaudePrompt($Document) {
 }
 
 function Invoke-C1Claude {
-  param([string]$Mode, $Document, [string]$PdfPath, [string]$CopilotExtractionPath, [string]$AgentDir,
+  param([string]$Mode, $Document, [string]$SourcePath, [string]$CopilotExtractionPath, [string]$AgentDir,
         [string]$InstructionPath, [string]$DemoDir, [string]$ClaudeCmd = 'claude', [int]$TimeoutSec = 1800)
   New-Item -ItemType Directory -Force -Path $AgentDir | Out-Null
   $log = [ordered]@{ mode = $Mode; started_at = (Get-C1Now) }
   $result = @{ state = 'access_failed'; log = $log }
   try {
     Write-C1Log 'Claude 依頼文作成' "モード $Mode"
-    Copy-Item -LiteralPath $PdfPath -Destination (Join-Path $AgentDir 'document.pdf') -Force
+    Copy-Item -LiteralPath $SourcePath -Destination (Join-Path $AgentDir $Document.local_name) -Force
     Copy-Item -LiteralPath $CopilotExtractionPath -Destination (Join-Path $AgentDir 'copilot_extraction.json') -Force
     Copy-Item -LiteralPath $InstructionPath -Destination (Join-Path $AgentDir 'instructions.md') -Force
     Write-C1Text (Join-Path $AgentDir 'prompt.md') (New-C1ClaudePrompt $Document)
     if ($Mode -eq 'api') {
       # PDF を読むための poppler を PATH に加える（Claude Code の Read が pdftoppm を使う）
-      if (-not (Add-C1PopplerPath)) { throw 'pdftoppm（poppler）がないため、Claude が PDF を読めません' }
+      if ($Document.kind -eq 'pdf' -and -not (Add-C1PopplerPath)) { throw 'pdftoppm（poppler）がないため、Claude が PDF を読めません' }
       Write-C1Log 'Claude 実行' '原文照合と FpML 作成（数分かかります。この間は表示が止まります）'
-      $prompt = 'Read prompt.md in the current folder and follow it exactly. Read document.pdf yourself; if you cannot read it, write only review_items.md explaining why. Otherwise create reviewed.json, fpml.xml and review_items.md in this folder.'
+      $prompt = "Read prompt.md in the current folder and follow it exactly. Read $($Document.local_name) yourself; if you cannot read it, write only review_items.md explaining why. Otherwise create reviewed.json, fpml.xml and review_items.md in this folder."
       $t0 = Get-Date
       Push-Location $AgentDir
       try {

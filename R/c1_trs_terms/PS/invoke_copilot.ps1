@@ -16,11 +16,14 @@
 $script:CopilotBetaNote = 'Microsoft 365 Copilot Chat API は beta（プレビュー）。本番利用は Microsoft のサポート対象外'
 
 # Copilot への依頼文（抽出指示書と同じ内容。Claude の結果は含めない）
-function New-C1CopilotPrompt($Document, [string]$FileUrl, [string]$InstructionPath) {
+function New-C1CopilotPrompt($Document, [string]$FileUrl, [string]$InstructionPath, [bool]$FileReference = $true) {
+  $target = if ($FileReference) { "対象の資料（添付ファイル）：$FileUrl（$($Document.file_name)、$($Document.pages)ページ）" } else {
+    "対象の資料：追加コンテキストとして渡した本文（取得元 $FileUrl、$($Document.file_name)、$($Document.pages)ページ、SHA-256 $($Document.sha256)）。" +
+    "追加コンテキストは1ページ1件で、説明欄にページ番号があります。page はそのページ番号にしてください" }
   @(
-    'あなたは CURIE c1 のTRSターム条件の一次読解担当です。添付の資料だけを根拠にし、推測で補わないでください。'
+    'あなたは CURIE c1 のTRSターム条件の一次読解担当です。渡した資料だけを根拠にし、推測で補わないでください。'
     'ウェブ検索や他の資料は使わないでください。'
-    "対象の資料：$FileUrl（$($Document.file_name)、$($Document.pages)ページ）"
+    $target
     ''
     '下の抽出指示に従い、回答は抽出JSONを1つだけ ```json で囲んで返してください。説明文は不要です。'
     "document は document_id=$($Document.document_id)、file=$($Document.file_name)、pages=$($Document.pages)、extracted_by=copilot、instruction_version=c1-extract-v1 としてください。"
@@ -47,13 +50,17 @@ function ConvertFrom-C1CopilotReply([string]$Text) {
 # 戻り値：state（ok／access_failed／invalid）、extraction、記録
 function Invoke-C1Copilot {
   param([string]$Mode, $Document, $Version, [string]$Token, [string]$AgentDir, [string]$InstructionPath,
-        [string]$ManualPath, [string]$DemoPath, [int]$TimeoutSec = 300)
+        [string]$ManualPath, [string]$DemoPath, [int]$TimeoutSec = 300,
+        [bool]$FileReference = $true, [object[]]$ContextPages = @())
   New-Item -ItemType Directory -Force -Path $AgentDir | Out-Null
-  $log = [ordered]@{ mode = $Mode; note = $script:CopilotBetaNote; started_at = (Get-C1Now) }
+  # 資料の渡し方：SharePoint／OneDrive は contextualResources.files（公式仕様でこの2つだけ）、
+  # それ以外（公開URL・ローカル）は、取得した原資料の本文をページごとに additionalContext で渡す
+  $how = if ($FileReference) { 'contextualResources.files（SharePoint／OneDrive のファイル参照）' } else { "additionalContext（取得した原資料の本文。$(@($ContextPages).Count) ページ）" }
+  $log = [ordered]@{ mode = $Mode; note = $script:CopilotBetaNote; started_at = (Get-C1Now); document_passed_as = $how }
   $result = @{ state = 'access_failed'; log = $log }
   try {
-    Write-C1Log 'Copilot 依頼文作成' "モード $Mode"
-    $prompt = New-C1CopilotPrompt $Document $Version.web_url $InstructionPath
+    Write-C1Log 'Copilot 依頼文作成' "モード $Mode、資料の渡し方 $how"
+    $prompt = New-C1CopilotPrompt $Document $Version.web_url $InstructionPath $FileReference
     Write-C1Text (Join-Path $AgentDir 'prompt_for_copilot.md') $prompt
     $log.prompt_sha256 = (Get-FileHash -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes($prompt))) -Algorithm SHA256).Hash.ToLower()
     $text = $null
@@ -62,11 +69,16 @@ function Invoke-C1Copilot {
         Write-C1Log 'Copilot API実行' '会話を作成しています（beta）'
         $conv = Invoke-C1Graph POST 'beta/copilot/conversations' -Body @{} -Token $Token -Expect 201
         $log.conversation_id = $conv.id
-        Write-C1Log 'Copilot API実行' "読解を依頼しています（会話 $($conv.id)、ウェブ検索なし、資料 $($Version.web_url)）"
+        Write-C1Log 'Copilot API実行' "読解を依頼しています（会話 $($conv.id)、ウェブ検索なし、$how）"
         $body = @{
           message             = @{ text = $prompt }
           locationHint        = @{ timeZone = 'Asia/Tokyo' }
-          contextualResources = @{ files = @(@{ uri = $Version.web_url }); webContext = @{ isWebEnabled = $false } }
+          contextualResources = if ($FileReference) { @{ files = @(@{ uri = $Version.web_url }); webContext = @{ isWebEnabled = $false } } }
+                                else { @{ webContext = @{ isWebEnabled = $false } } }
+        }
+        if (-not $FileReference) {
+          $body.additionalContext = @(@($ContextPages) | ForEach-Object {
+            @{ description = ("原資料 {0} p.{1}（{2}）" -f $Document.file_name, $_.page, $_.method); text = $_.text } })
         }
         $t0 = Get-Date
         $resp = Invoke-C1Graph POST "beta/copilot/conversations/$($conv.id)/chat" -Body $body -Token $Token -TimeoutSec $TimeoutSec

@@ -67,14 +67,26 @@ writeLines("読めなかった。添付の資料にアクセスできません�
 copilot_bad <- file.path(fixtures, "copilot_bad.md")
 writeLines("条件は次のとおりです：取引日は2026年10月6日です。", copilot_bad, useBytes = TRUE)
 
+# 入力の種類ごとのテスト資料：ローカルHTML（全体を1ページ）、画像だけのPDF（OCR）、公開PDFのURL
+inputs <- file.path(root, "inputs")
+html <- write_demo_trs_html_c1(inputs)
+scanned <- write_demo_trs_scanned_pdf_c1(inputs, demo$pdf)
+claude_html <- make_claude_demo(file.path(fixtures, "claude_html"), function(r) r |> mutate(page = if_else(is.na(page), NA_integer_, 1L)))
+public_pdf <- "https://www.sc.com/en/uploads/sites/66/content/docs/Total-Return-Swap.pdf?utm_source=chatgpt.com"
+public_404 <- "https://www.sc.com/en/uploads/sites/66/content/docs/CURIE-no-such-file.pdf"
+
 pdf <- demo$pdf
 fake_sp <- "https://contoso.sharepoint.com/sites/CURIE/Shared Documents/c1/DEMO_TRS_confirmation.pdf"
 cases <- tibble::tribble(
   ~name,                 ~url,     ~copilot, ~copilot_file,       ~claude, ~claude_dir,           ~expect_exit, ~expect_state,
   "成功（両方モック）",  pdf,      "demo",   copilot_json,        "demo",  claude_ok,             0L,           "デモ",
-  "未接続（api）",       fake_sp,  "api",    NA,                  "demo",  claude_ok,             2L,           "未接続",
-  "api に非SharePoint",  pdf,      "api",    NA,                  "demo",  claude_ok,             3L,           "読解失敗",
-  "資料がない",          "nofile.pdf", "demo", copilot_json,      "demo",  claude_ok,             3L,           "読解失敗",
+  "SharePoint 未接続",   fake_sp,  "api",    NA,                  "demo",  claude_ok,             2L,           "未接続",
+  "ローカルPDF・api 未接続", pdf,  "api",    NA,                  "demo",  claude_ok,             2L,           "未接続",
+  "ローカルHTML",        html,     "demo",   copilot_json,        "demo",  claude_html,           0L,           "デモ",
+  "画像だけのPDF（OCR）", scanned, "demo",   copilot_json,        "demo",  claude_ok,             0L,           "要確認",
+  "公開PDFのURL",        public_pdf, "demo", copilot_json,        "demo",  claude_ok,             0L,           "要確認",
+  "公開URLが404",        public_404, "demo", copilot_json,        "demo",  claude_ok,             3L,           "取得失敗",
+  "資料がない",          "nofile.pdf", "demo", copilot_json,      "demo",  claude_ok,             3L,           "取得失敗",
   "Copilot 読めない",    pdf,      "manual", copilot_unreadable,  "demo",  claude_ok,             4L,           "読解失敗",
   "Copilot 形式不正",    pdf,      "manual", copilot_bad,         "demo",  claude_ok,             5L,           "回答形式不正",
   "Claude 読めない",     pdf,      "demo",   copilot_json,        "demo",  claude_unreadable,     6L,           "読解失敗",

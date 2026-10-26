@@ -5,8 +5,8 @@
 #   Rscript scripts/run_c1_document.R <共有URL> [--copilot=api|manual|demo] [--claude=api|demo]
 #           [--copilot-file=<回答ファイル>] [--claude-demo-dir=<フォルダ>] [--show-fpml]
 #
-# 資料は、利用者が実行前に Claude と Microsoft 365 Copilot の両方から読める場所（SharePoint）へ配置しておく。
-# R は資料をアップロードしない。共有URLの資料を両方の読解に使い、片方だけ別のURLへ切り替えることはしない。
+# 入力：公開HTML・公開PDFのURL、ローカルのHTML・PDF、SharePoint／OneDrive の資料URL（形式は自動で判定する）。
+# R・PowerShell は資料をアップロードしない。取得した同じ原資料を Copilot と Claude の両方に渡す。
 # これは独立した二重読解ではない（Copilot の一次読解を Claude が原文で確かめる）。
 # Copilot の api は Microsoft 365 Copilot Chat API（beta／プレビュー）を使う。接続確認は PS/test_connection.ps1。
 
@@ -37,7 +37,15 @@ case <- workflows_c1_case(shared_url, copilot_mode, claude_mode,
 cat("\n状態：", case$state, "\n案件フォルダ：", case$case_dir, "\n", sep = "")
 if (!is.null(case$results$manifest$stages)) {
   st <- case$results$manifest$stages
-  cat("段階：資料 ", st$document, "／Copilot ", st$copilot, "／Claude ", st$claude, "／成果物 ", st$outputs, "\n", sep = "")
+  cat("段階：資料 ", st$document, "／読解用データ ", st$reading_data %||% "—", "／Copilot ", st$copilot,
+      "／Claude ", st$claude, "／成果物 ", st$outputs, "\n", sep = "")
+  acq <- case$results$manifest$acquisition
+  if (!is.null(acq)) {
+    cat("取得：", acq$source_type, "、", acq$format$kind, "、HTTP ", acq$http_status %||% "—", "、", acq$retrieved_at,
+        "、SHA-256 ", substr(acq$sha256, 1, 12), "…\n", sep = "")
+  }
+  passed <- case$results$manifest$copilot$document_passed_as
+  if (!is.null(passed)) cat("Copilot への資料の渡し方：", passed, "\n", sep = "")
 }
 if (!is.null(case$error)) cat("エラー：", case$error, "\n")
 if (!is.null(case$excel) && !is.na(case$excel)) cat("確認用Excel：", case$excel, "\n", sep = "")
