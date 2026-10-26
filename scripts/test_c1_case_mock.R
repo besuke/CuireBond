@@ -8,6 +8,7 @@
 if (!file.exists("Curie.Rproj")) stop("Run this script from the top folder of the Curie project.")
 source("R/load_Curie.R", encoding = "UTF-8")
 source("scripts/demo_data/demo_trs_terms.R", encoding = "UTF-8")
+Sys.unsetenv(c("Curie_OUR_PARTY_NAMES", "Curie_ALADDIN_MAP"))   # 個人用の設定（tmp/.Renviron）に左右されないように
 suppressPackageStartupMessages(library(dplyr))
 
 root <- file.path("output", "c1_trs", "mock_tests")

@@ -15,12 +15,24 @@ path_line_Curie <- function(path, kind = NULL) {
   paste0(kind, ":", path_display_Curie(path))
 }
 
-# 文言を1行出す
+# 使い分け：
+#   say_*  … 結果（取引の要約・保存先・テスト結果など）。標準出力（cat）
+#   note_* … お知らせ（起動・検出・処理開始・失敗・監視の開始と停止など）。message（RStudio では赤字。suppressMessages() で消せる）
+
+# 文言を1行出す（結果）
 say_Curie <- function(...) cat(..., "\n", sep = "")
 
-# 文言の後に出力先を出す（例：Payload draft saved. NOT SENT. ／ file:C:/.../payload.json）
+# 文言の後に出力先を出す（結果。例：Payload draft saved. NOT SENT. ／ file:C:/.../payload.json）
 say_path_Curie <- function(message, path, kind = NULL) {
   cat(message, "\n", path_line_Curie(path, kind), "\n", sep = "")
+}
+
+# お知らせを1行出す
+note_Curie <- function(...) message(paste0(...))
+
+# お知らせの後に出力先を出す
+note_path_Curie <- function(message, path, kind = NULL) {
+  message(message, "\n", path_line_Curie(path, kind))
 }
 
 # テスト結果：コンソールには英語のテスト名と PASS／FAIL だけを出し、詳細（状態・理由など）は TSV に保存する。

@@ -189,13 +189,15 @@ read_c1_history <- function(config) {
   # 種類が一目で分かる印（絵文字は ASCII 外でログ収集時に文字化けしうるので、ASCII の記号にする）
   title <- c(detected = "[+]  PDF detected.", started = "[>]  Processing started.", completed = "[OK] Processing completed.",
              review = "[!]  Saved for review.", duplicate = "[=]  Duplicate skipped.", failed = "[X]  Processing failed.")[[ev$event]]
+  # 検出・処理開始・失敗はお知らせ（message）、完了・要確認・重複は結果（cat）として出す
+  out <- if (ev$event %in% c("detected", "started", "failed")) note_Curie else say_Curie
   # 出来事ごとに空行を入れて区切る
-  say_Curie("\n", ev$time, " ", title, " ", ev$file, if (nzchar(ev$reason %||% "")) paste0(" (", ev$reason, ")"))
+  out("\n", ev$time, " ", title, " ", ev$file, if (nzchar(ev$reason %||% "")) paste0(" (", ev$reason, ")"))
   if (length(ev$summary)) {
     s <- unlist(ev$summary)
-    say_Curie(paste0(sprintf("%-13s", paste0(names(s), ":")), s, collapse = "\n"))
+    out(paste0(sprintf("%-13s", paste0(names(s), ":")), s, collapse = "\n"))
   }
-  if (nzchar(ev$path %||% "")) say_Curie(ev$kind, ":", ev$path)
+  if (nzchar(ev$path %||% "")) out(ev$kind, ":", ev$path)
 }
 
 # events.jsonl の行（書きかけの最後の行は読まない）
@@ -283,10 +285,15 @@ process_c1_pdf <- function(pdf, config, claude_mode = c("api", "demo"), claude_d
 }
 
 # ---- フォルダーの処理 -------------------------------------------------------------------------
-# 起動メッセージ：どのフォルダーを監視し、どこへ保存するか（extra：追加の行）
-c1_inbox_banner <- function(config, extra = NULL) {
+# 処理に使うワーカーの数：purrr::walk なら 1（逐次）、furrr::future_walk などなら future の plan のワーカー数
+.workers_c1 <- function(.walk = purrr::walk) {
+  if (identical(.walk, purrr::walk)) 1L else future::nbrOfWorkers()
+}
+
+# 起動メッセージ：どのフォルダーを監視し、どこへ保存するか、処理に使うワーカー（コア）の数（extra：追加の行）
+c1_inbox_banner <- function(config, extra = NULL, workers = 1L) {
   # ロゴ（ASCII だけ。© も ASCII 外でログ収集時に文字化けしうるので (C) と書く）
-  say_Curie(r"(
+  note_Curie(r"(
   ==================================================================
        ____ _   _ ____  ___ _____
       / ___| | | |  _ \|_ _| ____|
@@ -296,11 +303,14 @@ c1_inbox_banner <- function(config, extra = NULL) {
   ==================================================================
     Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.
 )")
-  say_Curie("[*]  CURIE OTC Derivative is monitoring contract PDFs.")
-  say_Curie("[*]  Aladdin API payloads are prepared for each case (DRAFT / NOT SENT).")
-  say_path_Curie("Watching PDF files directly under this folder (subfolders such as processed are excluded).", config$inbox, "dir")
-  say_path_Curie("Completed cases are saved under this folder.", config$processed, "dir")
-  if (length(extra)) say_Curie(paste(extra, collapse = "\n"))
+  note_Curie("[*]  CURIE OTC Derivative is monitoring contract PDFs.")
+  note_Curie("[*]  Aladdin API payloads are prepared for each case (DRAFT / NOT SENT).")
+  cores <- c(physical = parallel::detectCores(logical = FALSE), logical = parallel::detectCores(logical = TRUE))
+  note_Curie("[*]  Workers: ", workers, if (workers > 1L) " (parallel, future)" else " (sequential)",
+             ". CPU cores on this PC: ", cores[["physical"]], " physical / ", cores[["logical"]], " logical.")
+  note_path_Curie("Watching PDF files directly under this folder (subfolders such as processed are excluded).", config$inbox, "dir")
+  note_path_Curie("Completed cases are saved under this folder.", config$processed, "dir")
+  if (length(extra)) note_Curie(paste(extra, collapse = "\n"))
 }
 
 # 監視フォルダー直下の PDF の一覧（サイズ・更新時刻と、その状態を最初に見た時刻）。サブフォルダー（processed など）は含めない
@@ -320,7 +330,7 @@ c1_inbox_banner <- function(config, extra = NULL) {
 # .walk       ：反復の関数。並列にするときは furrr::future_walk に替える（各ワーカーで Curie を読み込んでおく）
 # banner      ：最初に起動メッセージ（監視フォルダーと保存先）を表示する（監視からはスキャンごとには出さない）
 scan_c1_inbox_once <- function(config, ..., snapshot = NULL, retry_failed = FALSE, banner = TRUE, .walk = purrr::walk) {
-  if (banner) c1_inbox_banner(config)
+  if (banner) c1_inbox_banner(config, workers = .workers_c1(.walk))
   scan_id <- paste0("scan_", format(Sys.time(), "%Y%m%d_%H%M%S"), "_", paste(as.character(openssl::rand_bytes(2)), collapse = ""))
   seen <- snapshot$path %||% character()   # 前回のスキャンで見た PDF（新しく現れた PDF を「検出」として知らせる）
   if (is.null(snapshot)) {
@@ -360,13 +370,13 @@ scan_c1_inbox_once <- function(config, ..., snapshot = NULL, retry_failed = FALS
 
 print.c1_inbox_scan <- function(x, ...) {
   if (!length(x$events) && !nrow(x$results) && !length(x$skipped) && !length(x$waiting) && !length(x$held)) {
-    say_Curie("No PDF files to process.")
+    note_Curie("No PDF files to process.")
     return(invisible(x))
   }
   purrr::walk(x$events, .say_c1_event)
-  purrr::walk(x$skipped, \(f) say_Curie("Skipped. ", f, " (being processed; checked again on the next scan)"))
-  purrr::walk(x$held, \(f) say_Curie("On hold. ", f, " (failed previously; see failed/. Use retry_failed = TRUE to retry)"))
-  purrr::walk(x$waiting, \(f) say_Curie("Waiting. ", f, " (size or modified time still changing; may be copying)"))
+  purrr::walk(x$skipped, \(f) note_Curie("Skipped. ", f, " (being processed; checked again on the next scan)"))
+  purrr::walk(x$held, \(f) note_Curie("On hold. ", f, " (failed previously; see failed/. Use retry_failed = TRUE to retry)"))
+  purrr::walk(x$waiting, \(f) note_Curie("Waiting. ", f, " (size or modified time still changing; may be copying)"))
   invisible(x)
 }
 
@@ -398,7 +408,7 @@ regenerate_c1_case <- function(case_dir, config, aladdin_map = read_aladdin_map_
   naming <- c1_common_name(case$validation$conditions, aladdin_map)
   # 要確認のまま（名前が決まらない）なら、review の案件はそのままにする
   if (is.na(naming$name) && keep_review && startsWith(case_dir, paste0(config$review, "/"))) {
-    say_path_Curie(paste0("Still needs review. ", original, " (", paste(unlist(naming$missing), collapse = "; "), ")"), case_dir, "dir")
+    note_path_Curie(paste0("Still needs review. ", original, " (", paste(unlist(naming$missing), collapse = "; "), ")"), case_dir, "dir")
     return(invisible(NULL))
   }
 
@@ -424,9 +434,9 @@ regenerate_c1_case <- function(case_dir, config, aladdin_map = read_aladdin_map_
 # review の案件をすべて作り直す（自社の名前を設定した後など。AI は呼ばない）。1件の失敗で止めない
 regenerate_c1_review_cases <- function(config, aladdin_map = read_aladdin_map_c1(), ...) {
   dirs <- list.dirs(config$review, recursive = FALSE)
-  if (!length(dirs)) say_Curie("No cases to regenerate.")
+  if (!length(dirs)) note_Curie("No cases to regenerate.")
   purrr::walk(dirs, \(d) tryCatch(regenerate_c1_case(d, config, aladdin_map, ...),
-                                  error = function(e) say_Curie("Regeneration failed. ", basename(d), " (", conditionMessage(e), ")")))
+                                  error = function(e) note_Curie("Regeneration failed. ", basename(d), " (", conditionMessage(e), ")")))
   invisible(read_c1_history(config) |> dplyr::filter(.data$scan_id == "regenerate"))
 }
 
@@ -461,7 +471,7 @@ start_c1_inbox_watch <- function(config, interval_sec = 30, claude_mode = c("api
   # 動いている印が残っていても、監視プロセスがなければ古い印として消す
   if (dir.exists(w$lock) && !length(.watch_workers_c1(w))) {
     unlink(c(w$lock, w$stop), recursive = TRUE)
-    say_Curie("[i]  Removed a stale watcher lock (no watcher process was running).")
+    note_Curie("[i]  Removed a stale watcher lock (no watcher process was running).")
   }
   if (!dir.create(w$lock, showWarnings = FALSE)) {
     stop("The watcher is already running. Stop it with stop_c1_inbox_watch(config).\n", path_line_Curie(w$lock, "dir"), call. = FALSE)
@@ -476,8 +486,8 @@ start_c1_inbox_watch <- function(config, interval_sec = 30, claude_mode = c("api
                              wd = config$project_root, stdout = w$log, stderr = "2>&1", cleanup = FALSE)
   assign(config$root, p, envir = .c1_watch_env)
   c1_inbox_banner(config)
-  say_Curie("[*]  Watcher started. Scan interval: ", interval_sec, " s (separate R process).")
-  say_path_Curie("Watcher log.", w$log, "file")
+  note_Curie("[*]  Watcher started. Scan interval: ", interval_sec, " s (separate R process).")
+  note_path_Curie("Watcher log.", w$log, "file")
   if (follow) follow_c1_inbox_watch(config)
   invisible(p)
 }
@@ -500,14 +510,14 @@ follow_c1_inbox_watch <- function(config, interval_sec = 2) {
       state$n <- length(events)
     }
     if (!dir.exists(w$lock)) {
-      say_Curie(format(Sys.time(), "%H:%M:%S"), " Watcher finished.")
+      note_Curie(format(Sys.time(), "%H:%M:%S"), " Watcher finished.")
       rm(list = config$root, envir = .c1_follow_env)
       return(invisible())
     }
     later::later(tick, interval_sec)
   }
   later::later(tick, interval_sec)
-  say_Curie("Watcher events (PDF detected, processing started, completed, failed) are shown in this console.")
+  note_Curie("Watcher events (PDF detected, processing started, completed, failed) are shown in this console.")
   invisible(TRUE)
 }
 
@@ -521,15 +531,15 @@ stop_c1_inbox_watch <- function(config, force = FALSE) {
                              recursive = TRUE)
   if (!length(workers)) {
     clear()
-    say_Curie("The watcher was not running. Watcher lock cleared.")
+    note_Curie("The watcher was not running. Watcher lock cleared.")
   } else if (force) {
     purrr::walk(workers, \(h) tryCatch(ps::ps_kill(h), error = function(e) NULL))
     still <- length(.watch_workers_c1(w))
     if (!still) clear()
-    say_Curie(if (still) "Could not stop the watcher process. Try again." else "Watcher stopped.")
+    note_Curie(if (still) "Could not stop the watcher process. Try again." else "Watcher stopped.")
   } else {
     writeLines(.now_c1(), w$stop)
-    say_Curie("Stop requested. The watcher stops before the next scan (after the PDF in progress, if any).")
+    note_Curie("Stop requested. The watcher stops before the next scan (after the PDF in progress, if any).")
   }
   invisible(TRUE)
 }

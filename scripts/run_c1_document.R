@@ -34,7 +34,7 @@ show <- function(x) cat(paste0(sprintf("%-13s", paste0(names(x), ":")), x), sep 
 cat("\n")
 if (!is.null(case$results$failure)) {
   f <- case$results$failure
-  say_path_Curie(paste0("Processing stopped. ", .failure_kind_en_c1(f$kind), ". ", f$message), case$case_dir, "dir")
+  note_path_Curie(paste0("Processing stopped. ", .failure_kind_en_c1(f$kind), ". ", f$message), case$case_dir, "dir")
 }
 if (!is.null(case$validation$conditions)) show(deal_summary_c1(case$validation$conditions))
 if (!is.null(case$aladdin)) {

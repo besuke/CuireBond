@@ -8,6 +8,7 @@
 if (!file.exists("Curie.Rproj")) stop("Run this script from the top folder of the Curie project.")
 source("R/load_Curie.R", encoding = "UTF-8")
 source("scripts/demo_data/demo_trs_terms.R", encoding = "UTF-8")
+Sys.unsetenv(c("Curie_OUR_PARTY_NAMES", "Curie_ALADDIN_MAP"))   # 個人用の設定（tmp/.Renviron）に左右されないように
 suppressPackageStartupMessages(library(dplyr))
 
 base <- normalizePath(file.path("output", "c1_trs", "inbox_mock_tests"), winslash = "/", mustWork = FALSE)
@@ -16,6 +17,16 @@ fixtures <- file.path(base, "fixtures")
 dir.create(fixtures, recursive = TRUE)
 demo <- create_demo_trs_terms_c1(file.path("data", "demo_c1_trs"))
 map <- list(our_party_names = list("Curie Demo Fund"))   # 自社＝トータル・リターンの受取者（相手先は DEMO Securities Co., Ltd.）
+
+# コンソールに出る行（cat の結果と message のお知らせの両方）を集める
+capture_all <- function(expr) {
+  notes <- character()
+  out <- utils::capture.output(withCallingHandlers(expr, message = function(m) {
+    notes <<- c(notes, strsplit(sub("\n$", "", conditionMessage(m)), "\n", fixed = TRUE)[[1]])
+    invokeRestart("muffleMessage")
+  }))
+  c(out, notes)
+}
 
 # 処理中の表示（起動メッセージ・進捗・結果）は出さない。テストの結果だけをコンソールに出す
 quiet <- function(expr) {
@@ -62,10 +73,14 @@ h <- scan1$results
 st <- function(f) h$status[h$original_name == f]
 nm <- function(f) h$saved_name[h$original_name == f]
 root_pdfs <- function(cfg) list.files(cfg$inbox, pattern = "\\.pdf$")
-console <- utils::capture.output(c1_inbox_banner(config), print(scan1))
+console <- capture_all({ c1_inbox_banner(config); print(scan1) })
 
 check("Watched folder is the root itself", config$inbox == normalizePath(file.path(base, "box1"), winslash = "/"))
 check("Startup message shows the watched folder as dir:", any(console == paste0("dir:", config$inbox)))
+check("Startup message shows workers and CPU cores", any(grepl("^\\[\\*\\]  Workers: 1 \\(sequential\\)\\. CPU cores on this PC: \\d+ physical / \\d+ logical\\.$", console)))
+future::plan(future::multisession, workers = 2)
+check("Worker count follows the future plan when future_walk is used", .workers_c1(purrr::walk) == 1L && .workers_c1(furrr::future_walk) == 2L)
+future::plan(future::sequential)
 check("Console output is English only", !any(grepl("[　-ヿ一-鿿！-｠]", console)))
 check("All 6 PDFs processed and recorded (PDFs under processed/ ignored)", nrow(h) == 6L && !"z_in_processed.pdf" %in% h$original_name &&
         file.exists(file.path(config$processed, "z_in_processed.pdf")))
@@ -186,11 +201,11 @@ local({
 config7 <- c1_inbox_config(file.path(base, "box7"), stable_sec = 0)
 w7 <- .watch_paths_c1(config7)
 dir.create(w7$lock)                                                           # 監視が動いている状態
-follow_out <- utils::capture.output(follow_c1_inbox_watch(config7, interval_sec = 0.1))
+follow_out <- capture_all(follow_c1_inbox_watch(config7, interval_sec = 0.1))
 variant(file.path(config7$inbox, "k_watched.pdf"), "k")
 writeBin(charToRaw("this is not a pdf"), file.path(config7$inbox, "l_broken.pdf"))
 quiet(scan_c1_inbox_once(config7, claude_mode = "demo", claude_demo_dir = claude_ok, aladdin_map = map, banner = FALSE))
-pump <- function() utils::capture.output(purrr::walk(1:5, \(i) later::run_now(0.3)))
+pump <- function() capture_all(purrr::walk(1:5, \(i) later::run_now(0.3)))
 shown <- pump()
 unlink(w7$lock, recursive = TRUE)                                             # 監視が終わった
 shown_end <- pump()
