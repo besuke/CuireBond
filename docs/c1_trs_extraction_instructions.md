@@ -1,4 +1,4 @@
-# c1 TRSターム条件の抽出指示（Copilot・Claude 共通）
+# c1 TRSターム条件の抽出指示（Claude 用）
 
 指示書の版：`c1-extract-v1`（抽出JSONの `document.instruction_version` に書く）
 
@@ -49,7 +49,7 @@ TRSの価格計算はしません。**値は必ずPDFの記載を根拠にし、
 }
 ```
 
-`extracted_by` は `claude` または `copilot`。ファイル名は `<document_id>__<extracted_by>.json` とする。
+`extracted_by` は `claude`。
 
 ## 抽出する項目
 

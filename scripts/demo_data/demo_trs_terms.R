@@ -1,6 +1,5 @@
-# c1のデモデータ：記入済みの架空TRSターム条件PDFと、2つのAIの抽出JSON（手作り）。
-# すべて架空。PDFは Quarto（Typst）で作る。抽出JSONは実際のAIの出力ではなく、
-# 「Claude と Copilot が読んだ結果」に見立てたデモで、Copilot側にわざと読み違いと読み落としを入れる。
+# c1のデモデータ：記入済みの架空TRSターム条件PDF（Quarto・Typst で作る）と、その正解（.demo_trs_truth_c1）。
+# すべて架空。Claude のデモ結果（write_demo_claude_review_c1）は、正解をそのまま Claude が読んだ形にしたもの（Claude は呼ばない）。
 
 # ターム条件の本文（1行1項目。ページ1：取引・参照資産、ページ2：資金調達レッグ）
 .demo_trs_lines_c1 <- function() {
@@ -122,54 +121,15 @@ write_demo_trs_pdf_c1 <- function(dir) {
   )
 }
 
-.write_demo_extraction_c1 <- function(fields, agent, pdf, path) {
-  doc <- list(
-    document = list(document_id = "DEMO_TRS_0001", file = basename(pdf), dealer = "DEMO Securities Co., Ltd.",
-                    pages = pdftools::pdf_info(pdf)$pages, pdf_sha256 = pdf_sha256_c1(pdf),
-                    extracted_by = agent, model = paste0("DEMO（", agent, " の出力に見立てた手作りデータ）"),
-                    instruction_version = "c1-extract-v1", extracted_at = "2026-10-26T09:00:00+09:00"),
-    fields = purrr::pmap(fields, function(field, value, value_status, page, quote, confidence = "high", note = "") {
-      list(field = field, value = if (is.na(value)) NULL else value, value_status = value_status,
-           page = if (is.na(page)) NULL else page, quote = if (is.na(quote)) NULL else quote,
-           confidence = confidence, note = note)
-    })
-  )
-  jsonlite::write_json(doc, path, auto_unbox = TRUE, pretty = TRUE, null = "null")
-  path
-}
 
-# デモ一式を作る：PDF、Claude役とCopilot役の抽出JSON、人による確認結果のCSV
+# デモ一式を作る：架空の PDF（正解は .demo_trs_truth_c1()）
 create_demo_trs_terms_c1 <- function(dir) {
   pdf_dir <- file.path(dir, "pdf")
-  ext_dir <- file.path(dir, "extractions")
-  dir.create(ext_dir, recursive = TRUE, showWarnings = FALSE)
   pdf <- write_demo_trs_pdf_c1(pdf_dir)
-  truth <- .demo_trs_truth_c1()
-  copilot <- truth |>
-    dplyr::mutate(
-      # 読み違い：0.35% を 0.30% と読んだ（引用は正しい原文のまま）
-      value = dplyr::if_else(.data$field == "funding.spread_bp", "30", .data$value),
-      # 読み落とし：ルックバックを見落とした
-      value = dplyr::if_else(.data$field == "funding.lookback_days", NA_character_, .data$value),
-      value_status = dplyr::if_else(.data$field == "funding.lookback_days", "not_found", .data$value_status),
-      quote = dplyr::if_else(.data$field == "funding.lookback_days", NA_character_, .data$quote),
-      page = dplyr::if_else(.data$field == "funding.lookback_days", NA_integer_, .data$page)
-    )
-  paths <- c(
-    claude = .write_demo_extraction_c1(truth, "claude", pdf, file.path(ext_dir, "DEMO_TRS_0001__claude.json")),
-    copilot = .write_demo_extraction_c1(copilot, "copilot", pdf, file.path(ext_dir, "DEMO_TRS_0001__copilot.json"))
-  )
-  # 人による確認結果（不一致・片方のみの項目を、PDFを見て確定した記録）
-  overrides <- tibble::tribble(
-    ~document_id,    ~field,                  ~value, ~reviewer,       ~reviewed_at,                ~reason,
-    "DEMO_TRS_0001", "funding.spread_bp",     "35",   "DEMO REVIEWER", "2026-10-26T10:00:00+09:00", "PDF p.2「Spread: Plus 0.35% per annum」を確認",
-    "DEMO_TRS_0001", "funding.lookback_days", "5",    "DEMO REVIEWER", "2026-10-26T10:00:00+09:00", "PDF p.2「Lookback: 5 Business Days」を確認"
-  )
-  overrides_path <- file.path(dir, "DEMO_TRS_0001_overrides.csv")
-  readr::write_csv(overrides, overrides_path)
-  list(pdf_dir = pdf_dir, pdf = pdf, extractions = paths, overrides = overrides_path)
+  list(pdf_dir = pdf_dir, pdf = pdf)
 }
 
+# 同じ内容の HTML（入力が HTML の場合のテスト用。全体を1ページとして扱う）
 write_demo_trs_html_c1 <- function(dir) {
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   lines <- .demo_trs_lines_c1()
@@ -181,7 +141,22 @@ write_demo_trs_html_c1 <- function(dir) {
   path
 }
 
-# 文字を持たない（画像だけの）PDF：OCR のテスト用。デモPDFのページを画像にし、Chrome で PDF に印刷する
+# HTML を PDF に印刷する（Chrome／Edge のヘッドレス印刷。画像だけの PDF を作るためだけに使う）
+.html_to_pdf_demo_c1 <- function(html_path, pdf_path) {
+  browser <- purrr::keep(c(Sys.getenv("CURIE_CHROME", ""), "C:/Program Files/Google/Chrome/Application/chrome.exe",
+                           "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"), \(p) nzchar(p) && file.exists(p))
+  if (!length(browser)) stop("HTMLをPDFへ変換するブラウザ（Chrome／Edge）が見つかりません。CURIE_CHROME で指定してください。", call. = FALSE)
+  q <- function(x) paste0('"', x, '"')   # Windows のコマンドラインは二重引用符で囲む
+  profile <- tempfile("curie_browser_")
+  on.exit(unlink(profile, recursive = TRUE), add = TRUE)
+  system2(browser[[1]], c("--headless=new", "--disable-gpu", "--no-pdf-header-footer", paste0("--user-data-dir=", q(profile)),
+                          paste0("--print-to-pdf=", q(normalizePath(pdf_path, winslash = "/", mustWork = FALSE))),
+                          q(paste0("file:///", normalizePath(html_path, winslash = "/")))), stdout = FALSE, stderr = FALSE)
+  if (!file.exists(pdf_path)) stop("HTMLをPDFへ変換できませんでした: ", html_path, call. = FALSE)
+  invisible(pdf_path)
+}
+
+# 文字を持たない（画像だけの）PDF：OCR のテスト用。デモPDFのページを画像にし、PDF に印刷する
 write_demo_trs_scanned_pdf_c1 <- function(dir, pdf) {
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   pngs <- pdftools::pdf_convert(pdf, format = "png", dpi = 200,
@@ -190,18 +165,16 @@ write_demo_trs_scanned_pdf_c1 <- function(dir, pdf) {
   writeLines(c("<!DOCTYPE html><html><head><style>@page{margin:0} img{width:100%;display:block;page-break-after:always}</style></head><body>",
                paste0("<img src=\"", basename(pngs), "\">"), "</body></html>"), html, useBytes = TRUE)
   out <- file.path(dir, "DEMO_TRS_scanned.pdf")
-  html_to_pdf_c1(html, out)
+  .html_to_pdf_demo_c1(html, out)
   out
 }
 
-# Claude の結果のモック：原文（デモの正解）で確認し、Copilot の読み違い・読み落としを修正した形
+# Claude の結果のモック：正解を Claude が原文から読み取った形
 # （reviewed.json・fpml.xml・review_items.md。PowerShell の -ClaudeMode demo で使う。Claude は呼ばない）
-write_demo_claude_review_c1 <- function(dir, copilot_json, tamper = NULL) {
+write_demo_claude_review_c1 <- function(dir, tamper = NULL) {
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
-  copilot <- read_trs_extraction_c1(copilot_json) |> dplyr::select("field", copilot_value = "value")
   dict <- trs_field_dictionary_c1()
   rows <- .demo_trs_truth_c1() |>
-    dplyr::left_join(copilot, by = "field") |>
     dplyr::left_join(dplyr::select(dict, "field", "type"), by = "field") |>
     dplyr::mutate(
       leg_id = dplyr::case_when(startsWith(.data$field, "return.") ~ "return_leg", startsWith(.data$field, "funding.") ~ "interest_leg",
@@ -210,24 +183,22 @@ write_demo_claude_review_c1 <- function(dir, copilot_json, tamper = NULL) {
       unit = dplyr::if_else(.data$value_status == "stated", .expected_unit_c1(.data$field, .data$type, "JPY"), ""),
       review_status = dplyr::case_when(.data$value_status == "not_found" ~ "not_found",
                                        .data$value_status != "stated" ~ "unresolved",
-                                       !is.na(.data$copilot_value) & .data$copilot_value == .data$value ~ "confirmed",
-                                       .default = "corrected"),
-      review_note = dplyr::if_else(.data$review_status == "corrected", paste0("原文 p.", .data$page, " で確認し、Copilot の値を修正"), ""),
+                                       .default = "confirmed"),
+      review_note = "",
       location = ""
     )
   if (!is.null(tamper)) rows <- tamper(rows)
-  fields <- purrr::pmap(rows, function(field, value, value_status, page, quote, copilot_value, leg_id, seq, unit,
+  fields <- purrr::pmap(rows, function(field, value, value_status, page, quote, leg_id, seq, unit,
                                        review_status, review_note, location, ...) {
     list(field = field, leg_id = leg_id, seq = seq, value = if (is.na(value)) NULL else value, unit = unit,
          value_status = value_status, page = if (is.na(page)) NULL else page, location = location,
-         quote = if (is.na(quote)) NULL else quote, copilot_value = if (is.na(copilot_value)) NULL else copilot_value,
-         review_status = review_status, review_note = review_note)
+         quote = if (is.na(quote)) NULL else quote, review_status = review_status, review_note = review_note)
   })
   jsonlite::write_json(list(document = list(document_id = "DEMO_TRS_confirmation", extracted_by = "claude"), fields = fields),
                        file.path(dir, "reviewed.json"), auto_unbox = TRUE, pretty = TRUE, null = "null")
   values <- rlang::set_names(rows$value, rows$field)
   xml2::write_xml(build_fpml_trs_c1(values[rows$value_status == "stated"], "DEMO_TRS_confirmation", "draft"), file.path(dir, "fpml.xml"))
-  writeLines(c("# 要確認事項（デモ：Claude は呼んでいない）", "", "- funding.spread_bp：Copilot 30 → 原文 35 bp（p.2）"),
+  writeLines(c("# 要確認事項（デモ：Claude は呼んでいない）", "", "- 未確定の項目はなし（デモの正解をそのまま使用）"),
              file.path(dir, "review_items.md"), useBytes = TRUE)
   dir
 }

@@ -23,9 +23,7 @@ load_lagrange_functions_CURIE()   # 移植したPart IIの関数（R/z0_utility/
                      "compute_offer_pricing.R", "write_offer_results_excel.R", "workflows_offer_sheet.R",
                      "report_tables.R"),
   # c1 は jsonlite・xml2・pdftools・openssl を使う（関数を呼んだときに必要）
-  c1_trs_terms = c("trs_fields.R", "read_extractions.R", "verify_quotes.R", "reconcile_terms.R",
-                   "fpml_trs.R", "fpml_validate.R", "workflows_trs_terms.R", "acquire_document.R",
-                   "sharepoint.R", "agents.R", "notify.R", "workflows_trs_document.R",
+  c1_trs_terms = c("trs_fields.R", "verify_quotes.R", "fpml_trs.R", "fpml_validate.R",
                    "read_results.R", "validate_results.R", "workflows_c1_case.R")
 )
 purrr::iwalk(.curie_modules, \(files, dir) purrr::walk(files, \(f) source(file.path("R", dir, f), encoding = "UTF-8")))

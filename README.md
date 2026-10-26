@@ -13,7 +13,7 @@
 | B1 | ファンド戦略・制約条件の読込 | 未実装 |
 | B2 | ポートフォリオ入れ替え提案 | 未実装 |
 | B3 | Aladdin APIによる発注 | 未実装 |
-| C1 | TRSターム条件の抽出結果 → 照合 → 確認表・FpML | デモ実装済み・本番連携は未完了（Aladdin用JSONは未実装） |
+| C1 | TRS 確認書 → Claude の読解 → 条件 JSON・FpML（R で検証） | 実装済み（FpML の公式XSD 検証は未設定、Aladdin用JSONは未実装） |
 | Z0 | 共通関数 | A1が使う範囲をデモ実装済み |
 
 A1 の本番連携で未完了の内容：
@@ -38,7 +38,7 @@ RStudio／Positron で `CURIE.Rproj` のフォルダを開き、Rコンソール
 source("scripts/run_demo_JPY.R", encoding = "UTF-8")     # JPYのみ
 source("scripts/run_demo_ISO.R", encoding = "UTF-8")     # ISOのみ
 source("scripts/run_demo_checks.R", encoding = "UTF-8")  # 両方＋別パス・別形式・日付不一致などの確認
-source("scripts/run_demo_c1_TRS.R", encoding = "UTF-8")  # C1：TRSターム条件の照合・確認表・FpML
+source("scripts/run_c1_document.R", encoding = "UTF-8")  # C1：TRS 確認書の読解（URL かファイルのパスを貼る）
 ```
 
 架空のデモデータを `data/demo/` に作り、結果を `output/` に出力する。
@@ -103,7 +103,7 @@ R/
   b1_fund_strategy/   Phase 2：ファンド戦略・制約条件の読込（未実装。READMEのみ）
   b2_rebalancing/     Phase 2：ポートフォリオ入れ替え提案（未実装。READMEのみ）
   b3_aladdin_orders/  Phase 2：Aladdin APIによる発注（未実装。READMEのみ）
-  c1_trs_terms/       C1：TRSターム条件の抽出結果の照合・確認表・FpML
+  c1_trs_terms/       C1：TRS 確認書の読解（PowerShell・Claude）と検証、条件 JSON・FpML
   z0_utility/         共通関数（lagrange/ に Part II の移植関数）
 scripts/              デモの生成（demo_data/）と実行スクリプト
 config/               実データ用の設定のサンプル
@@ -116,7 +116,7 @@ output/               出力結果（Git管理対象外）
 
 ## Excelの共通書式
 
-CURIEが作るすべてのExcel（A1の結果・標準形式のオファー・デモのオファー・C1の確認表など）は、
+CURIEが作るすべてのExcel（A1の結果・標準形式のオファー・デモのオファーなど）は、
 `R/z0_utility/excel_format.R` の `write_xlsx_CURIE()` で書き、次のフォントにする。
 
 - 英字・数字：**Cambria**

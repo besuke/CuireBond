@@ -1,17 +1,4 @@
-# c1 PowerShell 共通処理：ログ、終了コード、Microsoft への委任認証、Graph 呼び出し、共有URLからの資料取得。
-#
-# 認証：Microsoft ID プラットフォームのデバイスコード方式を Invoke-RestMethod で直接使う
-#       （Microsoft.Graph.Authentication モジュールは、この PC では Smart App Control に DLL を止められたため使わない）。
-#       アクセストークンは変数にだけ置き、ファイル・ログ・画面には出さない。クライアントシークレットは使わない。
-# 接続情報：環境変数 CURIE_M365_TENANT_ID、CURIE_M365_CLIENT_ID（アプリ登録。公開クライアントフロー許可）。
-#
-# 参照した公式資料
-#   デバイスコード方式 https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code
-#   サイト（パス指定） https://learn.microsoft.com/en-us/graph/api/site-getbypath
-#   ドライブ一覧       https://learn.microsoft.com/en-us/graph/api/drive-list
-#   driveItem の取得   https://learn.microsoft.com/en-us/graph/api/driveitem-get
-#   共有リンク         https://learn.microsoft.com/en-us/graph/api/shares-get （最小権限は Files.ReadWrite）
-#   内容のダウンロード https://learn.microsoft.com/en-us/graph/api/driveitem-get-content
+# c1 PowerShell 共通処理：ログ、終了コード、資料の取得（公開URL・ローカルファイル）、読解用データ、回答の形式チェック。
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -19,20 +6,16 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
-# 終了コード（R はこの値で状態を判断する）
+# 終了コード（R はこの値で状態を判断する。番号は以前の版と同じ）
 $script:ExitCodes = [ordered]@{
-  ok                    = 0   # 成果物あり（R の検証待ち）
-  error                 = 1   # 想定外のエラー
-  not_connected         = 2   # 未接続（接続情報の不足・認証の失敗）
-  document_access       = 3   # 取得失敗（資料を取得できない・版の確認に失敗）
-  copilot_access        = 4   # Copilot 読解失敗（資料を読めない・API の失敗）
-  copilot_format        = 5   # Copilot の回答形式が不正
-  claude_access         = 6   # Claude 読解失敗（資料を読めない・実行の失敗）
-  claude_format         = 7   # Claude の回答形式が不正
-  reading_data          = 8   # 読解用データを作れない（本文抽出・OCR の失敗）
+  ok              = 0   # 成果物あり（R の検証待ち）
+  error           = 1   # 想定外のエラー
+  document_access = 3   # 取得失敗（資料を取得できない）
+  claude_access   = 6   # Claude 読解失敗（資料を読めない・実行の失敗）
+  claude_format   = 7   # Claude の回答形式が不正
+  reading_data    = 8   # 読解用データを作れない（本文抽出・OCR の失敗）
 }
-$script:StateOfExit = @{ 0 = '要確認'; 1 = '失敗'; 2 = '未接続'; 3 = '取得失敗'; 4 = '読解失敗'; 5 = '回答形式不正'
-                         6 = '読解失敗'; 7 = '回答形式不正'; 8 = '読解用データ作成失敗' }
+$script:StateOfExit = @{ 0 = '要確認'; 1 = '失敗'; 3 = '取得失敗'; 6 = '読解失敗'; 7 = '回答形式不正'; 8 = '読解用データ作成失敗' }
 
 class C1Failure : System.Exception {
   [string]$Kind
@@ -42,7 +25,7 @@ function Stop-C1 ([string]$Kind, [string]$Message) { throw [C1Failure]::new($Kin
 
 function Get-C1Now { (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz') }
 
-# UTF-8（BOMなし）で書く。CSV だけは Excel で開けるよう BOM 付き
+# UTF-8（BOMなし）で書く
 function Write-C1Text([string]$Path, [string]$Text, [switch]$Bom) {
   $dir = Split-Path -Parent $Path
   if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
@@ -62,122 +45,13 @@ function Write-C1Log([string]$Stage, [string]$Message, [string]$Level = 'info') 
   }
 }
 
-# ---- 認証（デバイスコード方式） ----------------------------------------------------------
-# Copilot Chat API に必要な委任権限（公式仕様。7つすべて必要）
-$script:CopilotScopes = @('Sites.Read.All', 'Mail.Read', 'People.Read.All', 'OnlineMeetingTranscript.Read.All',
-                          'Chat.Read', 'ChannelMessage.Read.All', 'ExternalItem.Read.All')
-
-function Test-C1Connection {
-  $missing = @('CURIE_M365_TENANT_ID', 'CURIE_M365_CLIENT_ID') | Where-Object { -not [Environment]::GetEnvironmentVariable($_) }
-  return @($missing)
-}
-
-function Get-C1GraphToken([string[]]$Scopes) {
-  $missing = Test-C1Connection
-  if ($missing.Count) {
-    Stop-C1 'not_connected' ("接続情報がありません: " + ($missing -join ', ') +
-      "。テナントIDとアプリ登録のクライアントIDを環境変数に設定してください（demo には切り替えません）")
-  }
-  $tenant = $env:CURIE_M365_TENANT_ID; $client = $env:CURIE_M365_CLIENT_ID
-  $base = "https://login.microsoftonline.com/$tenant/oauth2/v2.0"
-  $scope = (($Scopes | ForEach-Object { "https://graph.microsoft.com/$_" }) -join ' ')
-  try {
-    $code = Invoke-RestMethod -Method Post -Uri "$base/devicecode" -Body @{ client_id = $client; scope = $scope }
-  } catch { Stop-C1 'not_connected' ("サインインを開始できません: " + $_.Exception.Message) }
-  # 利用者に表示する案内（URLと入力コード）。ログには書かない
-  Write-Host $code.message -ForegroundColor Yellow
-  $deadline = (Get-Date).AddSeconds([int]$code.expires_in); $interval = [int]$code.interval
-  while ((Get-Date) -lt $deadline) {
-    Start-Sleep -Seconds $interval
-    try {
-      $tok = Invoke-RestMethod -Method Post -Uri "$base/token" -Body @{
-        grant_type = 'urn:ietf:params:oauth:grant-type:device_code'; client_id = $client; device_code = $code.device_code }
-      return $tok.access_token
-    } catch {
-      $err = $null
-      try { $err = ($_.ErrorDetails.Message | ConvertFrom-Json).error } catch { }
-      if ($err -eq 'authorization_pending') { continue }
-      if ($err -eq 'slow_down') { $interval += 5; continue }
-      Stop-C1 'not_connected' ("サインインに失敗しました（" + ($err ?? $_.Exception.Message) + "）")
-    }
-  }
-  Stop-C1 'not_connected' 'サインインの期限が切れました'
-}
-
-# Graph 呼び出し（トークンは見出しにだけ使い、例外文にも含めない）
-function Invoke-C1Graph([string]$Method, [string]$Path, $Body = $null, [string]$Token, [int]$TimeoutSec = 120, [int[]]$Expect = @(200)) {
-  $uri = if ($Path -match '^https://') { $Path } else { "https://graph.microsoft.com/$Path" }
-  $params = @{ Method = $Method; Uri = $uri; Headers = @{ Authorization = "Bearer $Token" }; TimeoutSec = $TimeoutSec
-               SkipHttpErrorCheck = $true; StatusCodeVariable = 'status' }
-  if ($null -ne $Body) { $params.Body = [System.Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 30 -Compress)); $params.ContentType = 'application/json; charset=utf-8' }
-  $resp = Invoke-RestMethod @params
-  if ($Expect -notcontains $status) {
-    $detail = try { $resp.error.message } catch { '' }
-    # 失敗の種類が分かるように（利用上限・認証・権限やライセンス）
-    $label = switch ($status) { 429 { '利用上限（HTTP 429）' } 401 { '認証エラー（HTTP 401）' } 403 { '権限・ライセンス不足（HTTP 403）' } default { "HTTP $status" } }
-    throw "Graph $Method $($uri -replace '\?.*$','') が $label（$detail）"
-  }
-  return $resp
-}
-
-# 共有URLの種類：共有リンク（/:b:/ など）か、ファイルへの直接のURLか
-function Test-C1SharingLink([string]$Url) { return ([uri]$Url).AbsolutePath -match '^/:[a-z]:/' }
-function Test-C1SharePointUrl([string]$Url) { return ([uri]$Url).Host -match '\.sharepoint\.com$' }
-
-# 共有URL → driveItem（id・eTag・サイズ・更新日時・webUrl・ダウンロードURL）
-function Get-C1DriveItem([string]$Url, [string]$Token) {
-  $select = 'id,name,eTag,cTag,size,lastModifiedDateTime,webUrl,file,parentReference,@microsoft.graph.downloadUrl'
-  if (Test-C1SharingLink $Url) {
-    $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Url)).TrimEnd('=').Replace('/', '_').Replace('+', '-')
-    return Invoke-C1Graph GET "v1.0/shares/u!$b64/driveItem?`$select=$select" -Token $Token
-  }
-  # 直接のURL：サイト（/sites/名前 または /teams/名前）→ ライブラリ（webUrl の前方一致）→ ライブラリ内のパス
-  $u = [uri]$Url
-  $segments = $u.AbsolutePath.Trim('/').Split('/')
-  if ($segments.Count -lt 3 -or $segments[0] -notin @('sites', 'teams')) { throw "SharePoint のサイトを判定できないURLです: $Url" }
-  $site = Invoke-C1Graph GET ("v1.0/sites/{0}:/{1}/{2}" -f $u.Host, $segments[0], $segments[1]) -Token $Token
-  $drives = (Invoke-C1Graph GET "v1.0/sites/$($site.id)/drives?`$select=id,name,webUrl" -Token $Token).value
-  $target = [uri]::UnescapeDataString($Url.Split('?')[0])
-  $drive = $drives | Where-Object { $target.StartsWith([uri]::UnescapeDataString($_.webUrl) + '/') } | Select-Object -First 1
-  if (-not $drive) { throw "URLに対応するドキュメントライブラリが見つかりません: $Url" }
-  $rel = $target.Substring([uri]::UnescapeDataString($drive.webUrl).Length + 1)
-  $encoded = ($rel.Split('/') | ForEach-Object { [uri]::EscapeDataString($_) }) -join '/'
-  return Invoke-C1Graph GET "v1.0/drives/$($drive.id)/root:/$encoded`?`$select=$select" -Token $Token
-}
-
-# 事前認証済みのダウンロードURLから取得（トークンは付けない。URLは短時間で失効するため記録しない）
-function Save-C1DriveItemContent($Item, [string]$Path) {
-  $url = $Item.'@microsoft.graph.downloadUrl'
-  if (-not $url) { throw 'ダウンロードURLを取得できませんでした' }
-  Invoke-WebRequest -Uri $url -OutFile $Path -TimeoutSec 300 | Out-Null
-}
-
-# 版の記録（R の照合に使う）
-function Get-C1VersionRecord($Item, [string]$ContentPath) {
-  [ordered]@{ item_id = $Item.id; name = $Item.name; web_url = $Item.webUrl; e_tag = $Item.eTag; c_tag = $Item.cTag
-              size = $Item.size; last_modified = $Item.lastModifiedDateTime
-              sha256 = if ($ContentPath) { Get-C1Sha256 $ContentPath } else { $null }; checked_at = (Get-C1Now) }
-}
-
-# 文書の種類（中身で判定）。HTML は Chrome／Edge のヘッドレス印刷で PDF にする
+# 文書の種類（中身で判定）。PDF・HTML 以外は扱わない
 function Get-C1DocumentKind([string]$Path) {
   $bytes = [System.IO.File]::ReadAllBytes($Path) | Select-Object -First 2048
   if ($bytes.Count -ge 5 -and [System.Text.Encoding]::ASCII.GetString($bytes[0..4]) -eq '%PDF-') { return 'pdf' }
   $text = [System.Text.Encoding]::UTF8.GetString($bytes).ToLower()
   if ($text -match '<html|<!doctype html|<body|<document>') { return 'html' }
   return $null
-}
-function Convert-C1HtmlToPdf([string]$HtmlPath, [string]$PdfPath) {
-  $browser = @($env:CURIE_CHROME, "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-               "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe") | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-  if (-not $browser) { throw 'HTML を PDF にするブラウザ（Chrome／Edge）が見つかりません' }
-  $profileDir = Join-Path ([System.IO.Path]::GetTempPath()) ("curie_browser_" + [guid]::NewGuid())
-  try {
-    $fileUrl = 'file:///' + ((Resolve-Path $HtmlPath).Path -replace '\\', '/')
-    Start-Process -FilePath $browser -Wait -WindowStyle Hidden -ArgumentList @('--headless=new', '--disable-gpu', '--no-pdf-header-footer',
-      "--user-data-dir=`"$profileDir`"", "--print-to-pdf=`"$PdfPath`"", "`"$fileUrl`"")
-  } finally { Remove-Item -Recurse -Force $profileDir -ErrorAction SilentlyContinue }
-  if (-not (Test-Path $PdfPath)) { throw "HTML を PDF に変換できませんでした: $HtmlPath" }
 }
 
 # 回答の文字から JSON を取り出す（```json ブロックを優先。なければ最初の { から最後の } まで）
@@ -275,6 +149,9 @@ function Get-C1ReadingPages([string]$Path, [string]$Kind, [string]$WorkDir, [int
     $html = [regex]::Replace($html, '(?i)<\s*(br|/p|/div|/tr|/li|/h[1-6]|/table)\b[^>]*>', "`n")
     $html = [regex]::Replace($html, '(?i)</t[dh]\s*>', "`t")
     $text = [System.Net.WebUtility]::HtmlDecode([regex]::Replace($html, '<[^>]+>', ' '))
+    # 古い HTML の &#128;〜&#159;（例：&#147; &#148;）は、ブラウザと同じく Windows-1252 の文字（“ ” など）として読む
+    $cp1252 = [System.Text.Encoding]::GetEncoding(1252)
+    $text = [regex]::Replace($text, '[\u0080-\u009F]', { param($m) $cp1252.GetString([byte[]]@([int][char]$m.Value)) })
     $text = (($text -split "`n" | ForEach-Object { ($_ -replace '[ \t ]+', ' ').Trim() } | Where-Object { $_ }) -join "`n")
     return @([ordered]@{ page = 1; method = 'html_text'; chars = $text.Length; text = $text })
   }

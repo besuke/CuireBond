@@ -1,39 +1,40 @@
-# c1：配置済み資料1件の処理（R が入口）。
-#   1. PowerShell（R/c1_trs_terms/PS/run_document.ps1）を起動：認証、資料の取得と版の記録、
-#      Copilot の一次読解、Claude の原文照合・FpML 作成、CSV・JSON・FpML の保存
-#   2. R：終了コードと成果物を受け取り、検証（条件・根拠・版・FpML）、Excel 出力
-# R は資料をアップロードしない。共有URLは利用者が事前に両AIから読める場所へ配置した資料のもの。
-# 認証情報・トークンは PowerShell の中だけで扱い、R には渡らない。
+# c1：TRS 確認書1件の処理（R が入口）。
+#   1. PowerShell（R/c1_trs_terms/PS/run_document.ps1）を起動：資料の取得と記録、読解用データ、
+#      Claude の読解・FpML 作成、conditions.json・FpML の保存
+#   2. R：終了コードと成果物を受け取り、検証（条件・根拠・版・FpML）
+# 成果物は JSON（conditions.json）と FpML だけ。FpML は検証済みなら fpml_final.xml、それ以外は fpml_DRAFT.xml。
 #
-# copilot_mode：api（実際に呼ぶ）／manual（手動回答を取り込む）／demo（モック）。黙って切り替えない
-# claude_mode ：api（Claude Code を実行）／demo（用意した結果を使う）
+# source     ：公開 PDF・HTML の URL、またはローカルのファイル（Box Drive の同期フォルダのファイルも可）
+# claude_mode：api（Claude Code を実行）／demo（用意した結果を使う。Claude は呼ばない）
 
 .c1_ps_dir <- file.path("R", "c1_trs_terms", "PS")
 
-workflows_c1_case <- function(shared_url, copilot_mode = c("api", "manual", "demo"), claude_mode = c("api", "demo"),
+# コンソールに表示する主要項目（日付・参照レグ・参照金利・カレンダー。金額の項目は含めない）
+.key_fields_c1 <- c(
+  "trade.product_type",
+  "trade.trade_date", "trade.effective_date", "trade.termination_date", "return.final_valuation_date",
+  "return.underlyer_type", "return.underlyer_name", "return.underlyer_id", "return.underlyer_issuer", "return.return_type",
+  "funding.floating_rate_index", "funding.index_tenor", "funding.reset_relative_to", "funding.fixing_offset_days",
+  "return.valuation_calendar", "funding.fixing_calendar", "funding.payment_calendar",
+  "funding.fixing_business_day_convention", "funding.payment_business_day_convention"
+)
+
+workflows_c1_case <- function(source, claude_mode = c("api", "demo"),
                               case_id = NULL, output_root = file.path("output", "c1_trs", "cases"),
-                              copilot_file = NULL, claude_demo_dir = NULL,
+                              claude_demo_dir = NULL,
                               xsd_path = Sys.getenv("CURIE_FPML_XSD", ""), pwsh = Sys.which("pwsh")) {
-  copilot_mode <- match.arg(copilot_mode)
   claude_mode <- match.arg(claude_mode)
   if (!nzchar(pwsh)) stop("PowerShell 7（pwsh）が見つかりません。", call. = FALSE)
-  # manual・demo で回答ファイルがなくても止めない（Copilot の失敗として記録し、Claude単独処理に進む）
-  has_copilot_file <- !is.null(copilot_file) && file.exists(copilot_file)
-  if (copilot_mode %in% c("manual", "demo") && !has_copilot_file) {
-    message("Copilot の ", copilot_mode, " モードの回答ファイルがありません。Copilot は失敗として記録し、Claude単独処理に進みます。")
-  }
   if (is.null(case_id)) {
-    stem <- gsub("[^A-Za-z0-9_-]", "_", tools::file_path_sans_ext(basename(utils::URLdecode(sub("[?#].*$", "", shared_url)))))
+    stem <- gsub("[^A-Za-z0-9_-]", "_", tools::file_path_sans_ext(basename(utils::URLdecode(sub("[?#].*$", "", source)))))
     case_id <- paste0(if (nzchar(stem)) stem else "document", "_", format(Sys.time(), "%Y%m%d_%H%M%S"))
   }
   q <- function(x) paste0('"', x, '"')   # Windows のコマンドラインは二重引用符
   args <- c("-NoProfile", "-File", q(normalizePath(file.path(.c1_ps_dir, "run_document.ps1"))),
-            "-SharedUrl", q(shared_url), "-CopilotMode", copilot_mode, "-ClaudeMode", claude_mode,
+            "-Source", q(source), "-ClaudeMode", claude_mode,
             "-CaseId", q(case_id), "-OutputRoot", q(normalizePath(output_root, mustWork = FALSE)),
-            if (copilot_mode == "manual" && has_copilot_file) c("-CopilotManualPath", q(normalizePath(copilot_file))),
-            if (copilot_mode == "demo" && has_copilot_file) c("-CopilotDemoPath", q(normalizePath(copilot_file))),
             if (claude_mode == "demo") c("-ClaudeDemoDir", q(normalizePath(claude_demo_dir))))
-  message(format(Sys.time(), "%H:%M:%S"), " [c1] PowerShell を起動します（Copilot：", copilot_mode, "、Claude：", claude_mode, "）")
+  message(format(Sys.time(), "%H:%M:%S"), " [c1] PowerShell を起動します（Claude：", claude_mode, "）")
   exit <- system2(pwsh, args, stdout = "", stderr = "")
   case_dir <- file.path(output_root, case_id)
   message(format(Sys.time(), "%H:%M:%S"), " [c1] PowerShell が終了しました（終了コード ", exit, "：", c1_exit_code_label(exit), "）")
@@ -43,20 +44,18 @@ workflows_c1_case <- function(shared_url, copilot_mode = c("api", "manual", "dem
   results <- read_c1_case_results(case_dir)
   validation <- validate_c1_case(results, xsd_path)
   ok <- identical(as.integer(exit), 0L) && !is.null(results$conditions)
-  excel <- if (ok) write_c1_case_excel(results, validation) else NA_character_
-  # FpML：検証済みなら最終版、それ以外（未検証・条件不足・Claude単独処理）はドラフトとして保存する
+  # FpML：検証済みなら最終版、それ以外（未検証・条件不足）はドラフトとして保存する
   fpml_out <- NA_character_
   if (ok && !is.na(results$files[["fpml"]])) {
     fpml_out <- file.path(case_dir, "result", if (isTRUE(validation$final)) "fpml_final.xml" else "fpml_DRAFT.xml")
     file.copy(results$files[["fpml"]], fpml_out, overwrite = TRUE)
   }
-  jsonlite::write_json(list(case_id = case_id, state = validation$state, reading = validation$reading %||% "",
-                            exit_code = exit, modes = as.list(validation$modes),
-                            validated_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"), excel = excel,
+  jsonlite::write_json(list(case_id = case_id, state = validation$state, exit_code = exit, modes = as.list(validation$modes),
+                            validated_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
                             fpml = if (is.na(fpml_out)) NULL else basename(fpml_out), checks = validation$checks),
                        file.path(case_dir, "r_validation.json"), auto_unbox = TRUE, pretty = TRUE, null = "null")
-  list(state = validation$state, reading = validation$reading, exit_code = exit, case_dir = results$case_dir,
-       results = results, validation = validation, excel = excel, fpml = fpml_out)
+  list(state = validation$state, exit_code = exit, case_dir = results$case_dir,
+       results = results, validation = validation, fpml = fpml_out)
 }
 
 # コンソール表示用：主要項目の取得できたもの／できなかったもの
@@ -69,5 +68,5 @@ summarize_c1_case <- function(case, fields = .key_fields_c1) {
     dplyr::transmute(区分 = .data$section, 項目 = .data$label_ja, 番号 = .data$seq,
                      結果 = dplyr::if_else(.data$value_status == "stated" & nzchar(.data$value), "取得できた", "取得できなかった"),
                      値 = .data$value, ページ = .data$source_page, 確認状態 = .data$review_status,
-                     Copilotの値 = .data$copilot_value, 理由 = .data$review_note)
+                     理由 = .data$review_note)
 }

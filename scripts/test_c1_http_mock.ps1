@@ -10,7 +10,7 @@ New-Item -ItemType Directory -Path $tmp | Out-Null
 
 # モックの応答：URL の末尾で状態コード・種類・本文を決める
 $pdfBytes = [IO.File]::ReadAllBytes((Resolve-Path (Join-Path $PSScriptRoot '..\data\demo_c1_trs\pdf\DEMO_TRS_confirmation.pdf')))
-$cp1252 = [Text.Encoding]::GetEncoding(1252).GetBytes("<html><body><p>TOTAL RETURN SWAP CONFIRMATION</p><p>the 2000 ISDA Definitions (the `“Swap Definitions`”)</p></body></html>")
+$cp1252 = [Text.Encoding]::GetEncoding(1252).GetBytes("<html><body><p>TOTAL RETURN SWAP CONFIRMATION</p><p>the 2000 ISDA Definitions (the `“Swap Definitions`”)</p><p>Common Stock (the &#147;Fund&#148;)</p></body></html>")
 $responses = @{
   'ok.pdf'       = @{ status = 200; type = 'application/pdf'; body = $pdfBytes }
   'page.htm'     = @{ status = 200; type = 'text/html'; body = $cp1252 }
@@ -46,11 +46,11 @@ Check '200：中身が PDF なら Content-Type が違っても pdf（判定根�
   $f = Get-C1FormatRecord $p $r.content_type 'mislabel.bin'
   $f.kind -eq 'pdf' -and $f.by_content_type -eq $null -and $f.by_content -eq 'pdf'
 }
-Check '200：HTML（Windows-1252）を文字化けせずに本文にする' {
+Check '200：HTML（Windows-1252、文字参照 &#147; も）を文字化けせずに本文にする' {
   $p = Join-Path $tmp 'c.htm'; $r = Save-C1PublicSource 'https://mock.example/page.htm' $p
   $pages = @(Get-C1ReadingPages $p 'html' (Join-Path $tmp 'reading'))
   (Get-C1FormatRecord $p $r.content_type 'page.htm').kind -eq 'html' -and $pages.Count -eq 1 -and
-    $pages[0].text -match '“Swap Definitions”' -and $pages[0].text -notmatch [char]0xFFFD
+    $pages[0].text -match '“Swap Definitions”' -and $pages[0].text -match '“Fund”' -and $pages[0].text -notmatch [char]0xFFFD
 }
 Remove-Item Env:CURIE_HTTP_USER_AGENT
 Check '403：取得失敗。User-Agent の設定方法を案内し、ファイルを残さない' {

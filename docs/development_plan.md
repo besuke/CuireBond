@@ -161,17 +161,16 @@ APIの仕様、認証、権限、承認フローは後で提示される。エ�
 | 日次レポート | 目玉オファーの選定基準、変更の閾値 | A4 |
 | 戦略・提案 | 戦略・制約の入力形式、目的関数、取引費用、信用リスク枠、金利シナリオ | B1、B2 |
 | 発注 | 二重送信を判定するキー、状態の定義、承認の記録方法 | B3 |
-| TRSターム条件 | Copilotの実行環境、Aladdin用JSONの仕様、FpMLの公式XSDでの検証、記入済みの実データ | C1 |
+| TRSターム条件 | Aladdin用JSONの仕様、FpMLの公式XSDでの検証、記入済みの実データ | C1 |
 
-## C1 TRSターム条件の照合・確認表・FpML ［デモ実装済み・本番連携は未完了］
+## C1 TRSターム条件の読解・JSON・FpML ［実装済み・FpMLの公式XSD検証は未設定］
 
-各社のTRS確認書・ターム条件PDFから、AI（Copilot／Claude）が共通の指示書
-（`docs/c1_trs_extraction_instructions.md`）に従って抽出した結果を、Rで照合して確認表とFpMLを作る。
-TRSの価格計算はしない。詳細は `R/c1_trs_terms/README.md`。
+各社のTRS確認書・ターム条件（PDF・HTML。公開URLまたはローカル・Box Drive のファイル）を、Claude が
+指示書（`docs/c1_trs_extraction_instructions.md`）に従って読み、根拠（ページ・引用）つきの条件 JSON と FpML を作る。
+R が条件・根拠・FpML を検証する。TRSの価格計算はしない。詳細は `R/c1_trs_terms/README.md`。
 
 - 値の状態（記載あり／空欄／選択肢／記載なし）を区別し、推測で埋めない
-- 確定は「全AIが一致し、引用がPDFに実在」または「人が確認」した項目だけ
-- 正式なFpMLは必須項目がすべて確定した文書だけ。それ以外はドラフト（不足項目つき）
-- 同じ抽出JSONからは毎回同じ出力。AIの読取のぶれは照合と引用の実在確認で検出する
-- 公開サンプル（Standard Chartered・Wells Fargoのドラフト・ひな形）でClaude単独の抽出を試験済み
-- 今後：Copilotでの抽出、同じAIの複数回実行での揺れの測定、正解つき試験PDFでの正答率、Aladdin用JSON
+- 原文の引用が指定ページに実在するかを R が確かめる（AIの作り話・ページの誤りを検出）
+- 正式なFpML（fpml_final.xml）は、検証に合格し、必須項目がそろい、公式XSDに適合したときだけ。それ以外はドラフト
+- 公開サンプル（SEC の確認書）で実読解を試験済み
+- 今後：同じ資料での複数回実行の揺れの測定、正解つき試験PDFでの正答率、Aladdin用JSON
