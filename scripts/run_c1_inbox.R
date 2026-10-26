@@ -22,7 +22,7 @@ config <- c1_inbox_config(
 )
 
 # 2. 1回スキャンして処理する（起動メッセージと監視フォルダーを表示し、直下の PDF を purrr::walk() で1件ずつ処理）
-scan <- scan_c1_inbox_once(config, claude_mode = "api")
+scan <- scan_c1_inbox_once(config, claude_mode = "api")           # 配布用 API（未設定なら止まる）。開発では "claude_code"
 print(scan)
 
 # 3. 処理履歴（元のファイル名・状態・保存後の名前・理由）
@@ -30,7 +30,7 @@ read_c1_history(config) |> dplyr::mutate(status = .status_en_c1(status)) |>
   dplyr::select(time, original_name, status, saved_name, reason) |> print(n = Inf, width = Inf)
 
 # 4. 定期監視（同じ scan_c1_inbox_once() を 60 秒ごとに呼ぶ。別の R プロセスで動くので、RStudio のコンソールはそのまま使える）
-# start_c1_inbox_watch(config, interval_sec = 60, claude_mode = "api")
+# start_c1_inbox_watch(config, interval_sec = 60, claude_mode = "api")   # 開発では claude_mode = "claude_code"
 # c1_inbox_watch_status(config)                    # 状態と最後のスキャン時刻、ログ（logs/watch.log）の場所
 # stop_c1_inbox_watch(config)                      # 処理中の1件が終わってから止まる（force = TRUE ですぐに止める）
 

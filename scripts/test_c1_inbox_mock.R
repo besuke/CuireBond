@@ -8,7 +8,7 @@
 if (!file.exists("Curie.Rproj")) stop("Run this script from the top folder of the Curie project.")
 source("R/load_Curie.R", encoding = "UTF-8")
 source("scripts/demo_data/demo_trs_terms.R", encoding = "UTF-8")
-Sys.unsetenv(c("Curie_OUR_PARTY_NAMES", "Curie_ALADDIN_MAP"))   # 個人用の設定（tmp/.Renviron）に左右されないように
+Sys.unsetenv(c("Curie_OUR_PARTY_NAMES", "Curie_ALADDIN_MAP", "Curie_AI_PROVIDER"))   # 個人用の設定（tmp/.Renviron）に左右されないように
 suppressPackageStartupMessages(library(dplyr))
 
 base <- normalizePath(file.path("output", "c1_trs", "inbox_mock_tests"), winslash = "/", mustWork = FALSE)
@@ -223,6 +223,16 @@ check("Console follower: failure shows the reason file as file:", any(grepl("^fi
 check("Console follower stops when the watcher finishes", any(grepl("Watcher finished.", shown_end, fixed = TRUE)) &&
         !exists(config7$root, envir = .c1_follow_env))
 })
+
+# ---- 配布用 API が未設定：PDF に触らず、監視も始めない（Claude Code へは切り替えない） --------------------------
+config8 <- c1_inbox_config(file.path(base, "box8"), stable_sec = 0)
+variant(file.path(config8$inbox, "m_api.pdf"), "m")
+scan8 <- tryCatch(quiet(scan_c1_inbox_once(config8, claude_mode = "api", banner = FALSE)), error = function(e) e)
+watch8 <- tryCatch(quiet(start_c1_inbox_watch(config8, claude_mode = "api", follow = FALSE)), error = function(e) e)
+check("API not configured: scan and watcher stop before touching any PDF",
+      inherits(scan8, "error") && grepl("not configured", conditionMessage(scan8)) && inherits(watch8, "error") &&
+        file.exists(file.path(config8$inbox, "m_api.pdf")) && !nrow(read_c1_history(config8)) &&
+        !dir.exists(.watch_paths_c1(config8)$lock))
 
 # ---- 相手先名の安全化 ------------------------------------------------------------------------------
 check("Safe name part", identical(purrr::map_chr(c("  Example Imperial", "A?B*C", "AB.  x", "Abc D Ltd.", "日本証券株式会社"), .safe_name_part_c1),

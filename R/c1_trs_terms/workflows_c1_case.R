@@ -6,8 +6,9 @@
 #   5. 検証：条件・根拠・版・FpML（XML構文／公式XSD／条件との整合）。検証済みなら fpml_final.xml、それ以外は fpml_DRAFT.xml
 #
 # source     ：公開 PDF・HTML の URL、またはローカルのファイル（Box Drive の同期フォルダのファイルも可）
-# claude_mode：api（Claude Code を実行）／demo（claude_demo_dir の結果を使う。Claude は呼ばない）／
-#             saved（保存済みの抽出結果 claude_demo_dir から作り直す。Claude は呼ばない。デモ扱いにしない）
+# claude_mode：読み方（reader.R）。api（配布用：承認済みの AI API。未設定なら止まる）／claude_code（開発用：Claude Code）／
+#             demo（モック：claude_demo_dir の結果を使う。AI は呼ばない）／
+#             saved（保存済みの抽出結果 claude_demo_dir から作り直す。AI は呼ばない。デモ扱いにしない）
 # 段階の状態：取得失敗／読解用データ作成失敗／読解失敗（Claude の失敗・タイムアウト・読めなかった）／回答形式不正／要確認／検証済み
 
 # コンソールに表示する主要項目（日付・参照レグ・参照金利・カレンダー。金額の項目は含めない）
@@ -24,8 +25,8 @@
 
 # 失敗の種類（manifest などに残す値）→ コンソール表示用の英語
 .failure_kind_en_c1 <- function(kind) {
-  en <- c(取得失敗 = "Fetch failed", 読解用データ作成失敗 = "Reading data failed", 読解失敗 = "Reading by Claude failed",
-          回答形式不正 = "Invalid response format", 失敗 = "Failed")
+  en <- c(取得失敗 = "Fetch failed", 読解用データ作成失敗 = "Reading data failed", 読解失敗 = "Reading by AI failed",
+          回答形式不正 = "Invalid response format", 設定不足 = "AI API not configured", 失敗 = "Failed")
   unname(dplyr::coalesce(en[kind], "Failed"))
 }
 
@@ -46,7 +47,7 @@
     review_status = s(f$review_status), review_note = s(f$review_note)))
 }
 
-workflows_c1_case <- function(source, claude_mode = c("api", "demo", "saved"),
+workflows_c1_case <- function(source, claude_mode = .reader_modes_c1,
                               case_id = NULL, output_root = file.path("output", "c1_trs", "cases"),
                               claude_demo_dir = NULL, xsd_path = Sys.getenv("Curie_FPML_XSD", ""),
                               instruction_path = file.path("docs", "c1_trs_extraction_instructions.md"),
@@ -101,23 +102,33 @@ workflows_c1_case <- function(source, claude_mode = c("api", "demo", "saved"),
                           substr(acq$sha256, 1, 12), methods, if (!is.na(acq$encoding)) paste0(", encoding ", acq$encoding) else ""))
 
     # 3. Claude --------------------------------------------------------------------------------
+    # 作業フォルダー（読み方によらず同じ。依頼文・抽出指示・原資料の写しを置き、結果も同じ名前で受け取る）
     agent_dir <- file.path(case_dir, "agents", "claude")
-    step("Preparing Claude request", paste0("mode ", claude_mode))
+    step("Preparing the reading request", paste0("reader ", claude_mode))
     prepare_claude_workdir_c1(agent_dir, document, acq$path, instruction_path)
-    run <- if (claude_mode == "demo") {
-      step("Running Claude", "demo mode (using prepared results; Claude is not called)")
-      run_claude_demo_c1(agent_dir, claude_demo_dir)
-    } else if (claude_mode == "saved") {
-      step("Using saved extraction", "Claude is not called", path = claude_demo_dir)
-      run_claude_demo_c1(agent_dir, claude_demo_dir)
-    } else {
-      step("Running Claude", "reading the document and creating FpML (this takes a few minutes; output pauses meanwhile)")
-      run_claude_c1(agent_dir, document, cmd = claude_cmd, args = claude_args %||% claude_args_c1(document), timeout_sec = timeout_sec)
-    }
+    run <- switch(claude_mode,
+      api = {
+        step("Calling the AI API", paste0("provider ", dplyr::coalesce(dplyr::na_if(c1_ai_api_config()$provider, ""), "not set")))
+        run_ai_api_c1(agent_dir, document)
+      },
+      claude_code = {
+        step("Running Claude Code", "development reader; reading the document and creating FpML (this takes a few minutes)")
+        run_claude_c1(agent_dir, document, cmd = claude_cmd, args = claude_args %||% claude_args_c1(document), timeout_sec = timeout_sec)
+      },
+      demo = {
+        step("Using the mock reader", "demo mode (prepared results; AI is not called)")
+        run_claude_demo_c1(agent_dir, claude_demo_dir)
+      },
+      saved = {
+        step("Using saved extraction", "AI is not called", path = claude_demo_dir)
+        run_claude_demo_c1(agent_dir, claude_demo_dir)
+      })
     manifest$claude <- run$log
-    if (run$state == "timeout") .stage_fail_c1("読解失敗", run$log$error)
+    if (run$state == "not_configured") .stage_fail_c1("設定不足", run$log$error)
     if (run$state != "ok") .stage_fail_c1("読解失敗", run$log$error)
-    if (claude_mode == "api") step("Claude response received", sprintf("%s s, estimated cost %s USD", run$log$seconds, format(run$log$cost_usd)))
+    if (claude_mode %in% c("api", "claude_code")) {
+      step("Reading finished", paste0(run$log$seconds, " s, ", .usage_text_c1(run$log$usage %||% list(), run$log$cost_usd %||% NA_real_)))
+    }
     out <- check_claude_outputs_c1(agent_dir)
     manifest$claude$output_check <- out$state
     if (out$state %in% c("unreadable", "missing")) .stage_fail_c1("読解失敗", paste(out$issues, collapse = "; "))
@@ -144,7 +155,7 @@ workflows_c1_case <- function(source, claude_mode = c("api", "demo", "saved"),
     manifest$failure <- failure
     if (identical(failure$kind, "取得失敗")) manifest$stages$document <- "取得失敗"
     if (identical(failure$kind, "読解用データ作成失敗")) manifest$stages$reading_data <- "作成失敗"
-    if (failure$kind %in% c("読解失敗", "回答形式不正")) manifest$stages$claude <- failure$kind
+    if (failure$kind %in% c("読解失敗", "回答形式不正", "設定不足")) manifest$stages$claude <- failure$kind
   }
   manifest$finished_at <- .now_c1()
   jsonlite::write_json(manifest, file.path(case_dir, "manifest.json"), auto_unbox = TRUE, pretty = TRUE, null = "null")

@@ -8,7 +8,7 @@
 if (!file.exists("Curie.Rproj")) stop("Run this script from the top folder of the Curie project.")
 source("R/load_Curie.R", encoding = "UTF-8")
 source("scripts/demo_data/demo_trs_terms.R", encoding = "UTF-8")
-Sys.unsetenv(c("Curie_OUR_PARTY_NAMES", "Curie_ALADDIN_MAP"))   # 個人用の設定（tmp/.Renviron）に左右されないように
+Sys.unsetenv(c("Curie_OUR_PARTY_NAMES", "Curie_ALADDIN_MAP", "Curie_AI_PROVIDER"))   # 個人用の設定（tmp/.Renviron）に左右されないように
 suppressPackageStartupMessages(library(dplyr))
 
 root <- file.path("output", "c1_trs", "mock_tests")
@@ -109,8 +109,8 @@ cases <- tibble::tribble(
   "URL 403",                     "https://mock.example/denied.htm",         "demo", claude_ok,            NULL,     "",       "取得失敗",
   "URL 404",                     "https://mock.example/missing.pdf",        "demo", claude_ok,            NULL,     "",       "取得失敗",
   "Missing file",              "nofile.pdf",                              "demo", claude_ok,            NULL,     "",       "取得失敗",
-  "Claude fails (exit code)",   pdf,                                       "api",  NULL,                 fail_cmd, "",       "読解失敗",
-  "Claude timeout",         pdf,                                       "api",  NULL,                 slow_cmd, "",       "読解失敗",
+  "Claude fails (exit code)",   pdf,                                       "claude_code", NULL,                 fail_cmd, "",       "読解失敗",
+  "Claude timeout",         pdf,                                       "claude_code", NULL,                 slow_cmd, "",       "読解失敗",
   "Claude could not read",         pdf,                                       "demo", claude_unreadable,    NULL,     "",       "読解失敗",
   "Claude invalid response format",         pdf,                                       "demo", claude_bad,           NULL,     "",       "回答形式不正",
   "Tampered quote",                pdf,                                       "demo", claude_tampered,      NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、原文根拠：不合格",
@@ -166,8 +166,34 @@ results <- dplyr::bind_rows(results,
   check("Claude progress logged as it happens (session started, read, wrote)",
         all(purrr::map_lgl(c("Claude: session started", "Claude: read document.pdf", "Claude: wrote reviewed.json"),
                            \(p) any(grepl(p, progress_msgs, fixed = TRUE))))),
-  check("Claude cost and turns read from the final stream-json result line",
-        streamed$state == "ok" && identical(streamed$log$cost_usd, 0.42) && identical(streamed$log$num_turns, 3L)),
+  check("Claude Code cost estimate recorded only; displayed cost is Unknown (no confirmed price)",
+        streamed$state == "ok" && identical(streamed$log$cli_cost_estimate_usd, 0.42) && is.na(streamed$log$cost_usd) &&
+          identical(streamed$log$num_turns, 3L)),
+  # 配布用 API（api）：未設定・未対応なら英語で止まり、Claude Code へは切り替えない。mock の接続先なら後続は共通
+  check("API reader not configured: stops with an English message, Claude Code not used", local({
+    Sys.unsetenv("Curie_AI_PROVIDER")
+    case <- suppressMessages(workflows_c1_case(pdf, "api", case_id = "api_not_configured", output_root = file.path(root, "cases"),
+                                               claude_cmd = "this-command-must-not-run"))
+    identical(case$results$failure$kind, "設定不足") && grepl("^The distribution AI API is not configured", case$results$failure$message) &&
+      is.null(case$results$manifest$claude$exit_status)
+  })),
+  check("API reader with an unsupported provider: stops and says it is not supported yet", local({
+    Sys.setenv(Curie_AI_PROVIDER = "unconfirmed_provider")
+    on.exit(Sys.unsetenv("Curie_AI_PROVIDER"))
+    inherits(try(check_reader_c1("api"), silent = TRUE), "try-error") && grepl("not supported yet", .check_ai_api_c1())
+  })),
+  check("API reader with the mock provider: same outputs as the other readers; cost from usage and confirmed prices", local({
+    mock_dir <- fx("api_mock")
+    jsonlite::write_json(list(input_tokens = 10000, output_tokens = 2000), file.path(mock_dir, "usage.json"), auto_unbox = TRUE)
+    Sys.setenv(Curie_AI_PROVIDER = "mock", Curie_AI_MOCK_DIR = mock_dir,
+               Curie_AI_PRICE_INPUT_PER_MTOK = "3", Curie_AI_PRICE_OUTPUT_PER_MTOK = "15")
+    on.exit(Sys.unsetenv(c("Curie_AI_PROVIDER", "Curie_AI_MOCK_DIR", "Curie_AI_PRICE_INPUT_PER_MTOK", "Curie_AI_PRICE_OUTPUT_PER_MTOK")))
+    case <- suppressMessages(workflows_c1_case(pdf, "api", case_id = "api_mock", output_root = file.path(root, "cases")))
+    is.null(case$results$failure) && !is.null(case$aladdin) && !is.na(case$fpml) &&
+      isTRUE(all.equal(case$results$manifest$claude$cost_usd, (10000 * 3 + 2000 * 15) / 1e6))
+  })),
+  check("Cost is Unknown without confirmed prices", .usage_text_c1(list(input_tokens = 10, output_tokens = 5), NA_real_) ==
+          "tokens in/out 10 / 5, cost Unknown"),
   check("Source URL recorded without tracking parameters", identical(man(i_of("URL 200 (PDF)"))$source, "https://mock.example/ok.pdf")),
   check("User-Agent taken from Curie_HTTP_USER_AGENT", identical(last_ua, Sys.getenv("Curie_HTTP_USER_AGENT", "Curie-c1 (TRS terms reader)")) || nzchar(last_ua)),
   check("Content/Content-Type mismatch recorded", nzchar(man(i_of("URL 200 (PDF content, other Content-Type)"))$acquisition$format$note)),

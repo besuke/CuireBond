@@ -29,7 +29,7 @@ load_lagrange_functions_Curie()   # 移植したPart IIの関数（R/z0_utility/
                      "report_tables.R"),
   # c1 は jsonlite・xml2・pdftools・openssl・curl・processx を使う（関数を呼んだときに必要）
   c1_trs_terms = c("trs_fields.R", "verify_quotes.R", "fpml_trs.R", "fpml_validate.R", "acquire_document.R",
-                   "reading_data.R", "claude_agent.R", "read_results.R", "validate_results.R", "aladdin_payload.R",
+                   "reading_data.R", "claude_agent.R", "reader.R", "read_results.R", "validate_results.R", "aladdin_payload.R",
                    "workflows_c1_case.R", "inbox_c1.R")
 )
 purrr::iwalk(.curie_modules, \(files, dir) purrr::walk(files, \(f) source(file.path("R", dir, f), encoding = "UTF-8")))

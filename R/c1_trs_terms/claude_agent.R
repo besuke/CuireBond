@@ -131,7 +131,10 @@ run_claude_c1 <- function(agent_dir, document, cmd = claude_command_c1(), args =
   writeLines(res$stderr %||% "", file.path(agent_dir, "claude_stderr.txt"), useBytes = TRUE)
   # 最後の結果の行（type = result）から、費用の目安・回数・エラーの有無を読む
   run <- .claude_result_c1(res$stdout %||% "")
-  log$cost_usd <- run$total_cost_usd %||% NA_real_
+  # 費用：Claude Code が出す見積もり（total_cost_usd）は記録だけにし、表示の費用は確認済みの単価がないので不明（NA）
+  log$cli_cost_estimate_usd <- run$total_cost_usd %||% NA_real_
+  log$usage <- list(input_tokens = run$usage$input_tokens %||% NA_integer_, output_tokens = run$usage$output_tokens %||% NA_integer_)
+  log$cost_usd <- NA_real_
   log$num_turns <- run$num_turns %||% NA_integer_
   log$is_error <- run$is_error %||% NA
   state <- if (log$timed_out) "timeout" else if (!identical(as.integer(res$status), 0L) || isTRUE(log$is_error)) "failed" else "ok"

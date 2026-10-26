@@ -74,6 +74,23 @@ Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_wa
 - Claude が PDF を読むには poppler（pdftoppm）が必要（winget の oschwartz10612.Poppler。`Curie_POPPLER_BIN` で指定可）
 - FpML の公式XSD：`Curie_FPML_XSD` に公式スキーマ一式のファイルを指定する（未設定なら「検証済み」にならない）
 
+## 読み方（claude_mode。R/c1_trs_terms/reader.R）
+
+| 値 | 用途 | 内容 |
+|---|---|---|
+| `api` | 配布・運用 | R から承認済みの AI API を呼ぶ。接続先は `Curie_AI_PROVIDER`。未設定・未対応なら英語で設定不足を表示して止まる（Claude Code へは自動で切り替えない） |
+| `claude_code` | 開発・検証 | Claude Code（`claude` コマンド）を呼ぶ。Claude Code のインストールとログインが必要 |
+| `demo` | モック | 用意した結果を使う（AI は呼ばない） |
+| `saved` | 作り直し | 保存済みの抽出結果（extraction/）を使う（AI は呼ばない） |
+
+- どの読み方も結果を同じ形（reviewed.json・fpml.xml・review_items.md）にそろえるので、検証・TSV・FpML・payload・フォルダー監視は共通
+- 配布用 API の接続先（アダプター）はまだない（試験用の `mock` だけ）。会社の承認済み API（Microsoft 365 Copilot API を検討中）は、
+  利用許可・ライセンス・認証方式・エンドポイント・PDF の渡し方が確認できてから追加する（推測で作らない）
+- 認証情報は環境変数から読み、コード・Git・ログには出さない
+- 費用は、API が返す使用量と確認済みの単価（`Curie_AI_PRICE_INPUT_PER_MTOK`・`Curie_AI_PRICE_OUTPUT_PER_MTOK`、USD／100万トークン）が
+  そろうときだけ表示する。それ以外は `Unknown`（Claude Code の見積もりは manifest に記録だけする）
+- 以前の `claude_mode = "api"` は Claude Code を呼んでいた。開発で Claude Code を使うときは `"claude_code"` を指定する
+
 ## フォルダー投入型（inbox に PDF を置く）
 
 `scripts/run_c1_inbox.R` が RStudio からの実行例。`source("R/load_Curie.R")` のあとは作業ディレクトリに依存しない。

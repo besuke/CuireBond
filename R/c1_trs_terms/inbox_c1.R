@@ -215,7 +215,7 @@ read_c1_history <- function(config) {
 # グローバル変数や共有の一時ファイルは使わない（引数と自分の job フォルダーだけを使う）ので、並列のワーカーからも呼べる。
 # 元の PDF は読むだけ。出力の保存がすべて終わってから消す（失敗したときは元の場所に残す）。
 # claude_demo_dir：デモ用。フォルダー、または元のファイル名を受け取ってフォルダーを返す関数
-process_c1_pdf <- function(pdf, config, claude_mode = c("api", "demo"), claude_demo_dir = NULL,
+process_c1_pdf <- function(pdf, config, claude_mode = .reader_modes_c1, claude_demo_dir = NULL,
                            aladdin_map = read_aladdin_map_c1(), xsd_path = Sys.getenv("Curie_FPML_XSD", ""),
                            timeout_sec = as.numeric(Sys.getenv("Curie_CLAUDE_TIMEOUT_SEC", "1800")),
                            claude_cmd = claude_command_c1(), scan_id = "") {
@@ -332,6 +332,8 @@ c1_inbox_banner <- function(config, extra = NULL, workers = 1L) {
 # banner      ：最初に起動メッセージ（監視フォルダーと保存先）を表示する（監視からはスキャンごとには出さない）
 scan_c1_inbox_once <- function(config, ..., snapshot = NULL, retry_failed = FALSE, banner = TRUE, .walk = purrr::walk) {
   if (banner) c1_inbox_banner(config, workers = .workers_c1(.walk))
+  # 読み方が使えなければ、PDF に触る前に止める（配布用 API が未設定なら英語で理由を出す。Claude Code へは切り替えない）
+  check_reader_c1(match.arg(list(...)$claude_mode %||% .reader_modes_c1[1], .reader_modes_c1))
   scan_id <- paste0("scan_", format(Sys.time(), "%Y%m%d_%H%M%S"), "_", paste(as.character(openssl::rand_bytes(2)), collapse = ""))
   seen <- snapshot$path %||% character()   # 前回のスキャンで見た PDF（新しく現れた PDF を「検出」として知らせる）
   if (is.null(snapshot)) {
@@ -465,9 +467,10 @@ regenerate_c1_review_cases <- function(config, aladdin_map = read_aladdin_map_c1
 # 監視を始める。interval_sec ごとに scan_c1_inbox_once() を呼ぶ（最長 max_hours 時間）。
 # 処理中の PDF があるときは、その1件が終わってから止まる
 # follow = TRUE なら、出来事をこの R セッション（RStudio のコンソール）に表示する（follow_c1_inbox_watch）
-start_c1_inbox_watch <- function(config, interval_sec = 30, claude_mode = c("api", "demo"), claude_demo_dir = NULL, max_hours = 24,
+start_c1_inbox_watch <- function(config, interval_sec = 30, claude_mode = .reader_modes_c1, claude_demo_dir = NULL, max_hours = 24,
                                  follow = TRUE) {
   claude_mode <- match.arg(claude_mode)
+  check_reader_c1(claude_mode)   # 配布用 API が未設定なら、監視を始めずに英語で理由を出す
   w <- .watch_paths_c1(config)
   # 動いている印が残っていても、監視プロセスがなければ古い印として消す
   if (dir.exists(w$lock) && !length(.watch_workers_c1(w))) {

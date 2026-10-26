@@ -3,7 +3,7 @@
 #
 #   source("scripts/run_c1_document.R", encoding = "UTF-8")      # RStudio：資料のURLかファイルのパスを貼る
 #   c1_args <- c("--claude=demo", "--claude-demo-dir=<フォルダ>"); source(...)   # RStudio でモードを指定する
-#   Rscript scripts/run_c1_document.R <URLまたはファイルのパス> [--claude=api|demo] [--claude-demo-dir=<フォルダ>]
+#   Rscript scripts/run_c1_document.R <URLまたはファイルのパス> [--claude=api|claude_code|demo] [--claude-demo-dir=<フォルダ>]
 #
 # 入力：公開 PDF・HTML の URL、ローカルの PDF・HTML（Box Drive の同期フォルダのファイルも可。形式は自動で判定する）。
 # 成果物：result/conditions.json と FpML（検証済みなら fpml_final.xml、それ以外は fpml_DRAFT.xml）、
