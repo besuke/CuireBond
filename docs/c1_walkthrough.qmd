@@ -29,8 +29,9 @@ TRS（トータル・リターン・スワップ）の確認書・ターム条�
 
 | 担当 | 処理 |
 |---|---|
-| PowerShell（R/c1_trs_terms/PS/） | 資料の取得と記録、読解用データ（本文・OCR）、Claude の読解・FpML 作成、JSON・FpML の保存 |
-| R | 入口（URL・ファイルの受付）、終了コード・成果物の受取、条件・根拠・版・FpML（XML構文／公式XSD／条件との一致）の検証、表示 |
+| R（R/c1_trs_terms/） | 資料の取得と記録、読解用データ（本文。文字のないページは OCR）、Claude Code の起動（processx・タイムアウト）、JSON・FpML の保存、検証、表示 |
+| Claude Code（claude -p） | 作業フォルダの原資料（PDF・HTML）と指示書を読み、条件（reviewed.json）・FpML・要確認事項を作る（元の URL から再取得しない） |
+| PowerShell（R/c1_trs_terms/windows/） | Windows 標準の OCR の補助だけ（文字のない PDF ページ） |
 
 ## 2. 処理の流れ
 
@@ -41,35 +42,35 @@ TRS（トータル・リターン・スワップ）の確認書・ターム条�
 5. **保存**：`result/conditions.json`（条件・資料の記録・要確認事項）と FpML
 6. **R の検証**：すべて合格し、必須項目がそろい、公式 XSD にも適合したときだけ **検証済み**（`fpml_final.xml`）。それ以外は **要確認**（`fpml_DRAFT.xml`）
 
-## 3. 状態と終了コード
+## 3. 状態
 
-| 状態 | 終了コード | 意味 |
-|---|---|---|
-| 検証済み | 0 | R の検証に合格し、必須項目がそろい、公式 XSD に適合。FpML は fpml_final.xml |
-| 要確認 | 0 | 成果物はあるが、不合格・未確定・XSD 未検証のどれかがある。FpML は fpml_DRAFT.xml |
-| 取得失敗 | 3 | 原資料を取得できない（URL がない、アクセス拒否、ファイルがないなど） |
-| 読解失敗／回答形式不正 | 6／7 | Claude が原資料を読めない、または結果の形式が不正 |
-| 読解用データ作成失敗 | 8 | 本文を抜き出せず、OCR でも読めない |
+| 状態 | 意味 |
+|---|---|
+| 検証済み | XML構文・公式XSD・原文根拠・条件との整合がすべて合格し、必須項目がそろった。FpML は fpml_final.xml |
+| 要確認 | 成果物はあるが、不合格・要確認・未検証・未確定・XSD 未検証のどれかがある。FpML は fpml_DRAFT.xml |
+| デモ | Claude がモック。検証に合格しても検証済みにしない |
+| 取得失敗 | 原資料を取得できない（URL がない、アクセス拒否、ファイルがないなど）。Claude には進まない |
+| 読解用データ作成失敗 | 本文を抜き出せず、OCR でも読めない |
+| 読解失敗 | Claude の失敗（終了コード）・タイムアウト・原資料を読めなかった。途中の結果は使わない |
+| 回答形式不正 | Claude の結果の形式が不正（reviewed.json の項目不足、fpml.xml がないなど） |
 
 ## 4. 実行例 A：PDF
 
 入力：`data/demo_c1_trs/pdf/DEMO_TRS_confirmation.pdf`（Claude はモック）
 
 ```
-12:26:18 [c1] PowerShell を起動します（Claude：demo）
-12:26:20 [c1-ps] 資料の取得：data/demo_c1_trs/pdf/DEMO_TRS_confirmation.pdf（ローカルファイル）
-12:26:21 [c1-ps] 資料の取得：DEMO_TRS_confirmation.pdf（PDF、2 ページ、SHA-256 cf35dfc857dd…、本文 pdf_text 2 ページ）
-12:26:21 [c1-ps] Claude 依頼文作成：モード demo
-12:26:21 [c1-ps] Claude 実行：デモ（用意した結果を使う。Claude は呼ばない）
-12:26:21 [c1-ps] Claude 回答取得：デモの結果：output\c1_trs\walkthrough\claude_demo
-12:26:21 [c1-ps] 成果物の保存：output\c1_trs\cases\DEMO_TRS_confirmation_20261026_122618\result
-12:26:21 [c1-ps] 終了：状態：要確認（終了コード 0）　案件フォルダ：output\c1_trs\cases\DEMO_TRS_confirmation_20261026_122618
-12:26:21 [c1] PowerShell が終了しました（終了コード 0：成果物あり（R の検証待ち））
-状態：要確認（FpML の公式XSD 検証が未実施または不適合）
-段階：資料 取得済み／読解用データ 作成済み（pdf_text 2 ページ）／Claude 取得済み（デモ：Claude は呼んでいない）／成果物 保存済み（R の検証待ち）
-取得：local_file、pdf、HTTP —、2026-10-26T12:26:20+09:00、SHA-256 cf35dfc857dd…
-JSON：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_122618/result/conditions.json
-FpML：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_122618/result/fpml_DRAFT.xml（ドラフト：未検証または条件不足）
+13:10:35 [c1] 資料の取得：data/demo_c1_trs/pdf/DEMO_TRS_confirmation.pdf
+13:10:36 [c1] 資料の取得：DEMO_TRS_confirmation.pdf（PDF、2 ページ、SHA-256 8b9ba2ffe79a…、本文 pdf_text 2 ページ）
+13:10:36 [c1] Claude 依頼文作成：モード demo
+13:10:36 [c1] Claude 実行：デモ（用意した結果を使う。Claude は呼ばない）
+13:10:36 [c1] 成果物の保存：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_131035/result
+13:10:37 [c1] 終了：状態：要確認（公式XSD：未実施（XSD未設定））
+状態：要確認（公式XSD：未実施（XSD未設定））
+段階：資料 取得済み／読解用データ 作成済み（pdf_text 2 ページ）／Claude 取得済み（デモ：Claude は呼んでいない）／成果物 保存済み
+取得：local_file、pdf、HTTP NA、2026-10-26T13:10:35+0900、SHA-256 8b9ba2ffe79a…
+JSON：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_131035/result/conditions.json
+FpML：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_131035/result/fpml_DRAFT.xml（ドラフト：未検証または条件不足）
+判定：XML構文 合格／公式XSD 未実施（XSD未設定）／原文根拠 合格／条件JSONとの整合 合格
 ■ トータル・リターン・スワップか：はい（根拠 p.1）
 ```
 
@@ -93,7 +94,7 @@ FpML：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_122618/result/fpml_DRA
 
 | 区分 | 検証 | 結果 | 詳細 |
 |---|---|---|---|
-| 実行 | PowerShell の処理 | 合格 | 終了コード 0：成果物あり（R の検証待ち） |
+| 実行 | 取得・読解 | 合格 | 完了 |
 | 条件 | 項目IDが定義にある | 合格 |  |
 | 条件 | 項目・レッグ・番号の重複なし | 合格 |  |
 | 条件 | 必須項目の行がある | 合格 |  |
@@ -105,16 +106,32 @@ FpML：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_122618/result/fpml_DRA
 | 条件 | トータル・リターン・スワップである | 合格 | TOTAL_RETURN_SWAP |
 | 確認 | 確認状態の値 | 合格 |  |
 | 確認 | 必須項目が原文で確認された | 合格 |  |
+| 根拠 | 記載ありの値に原文の引用がある | 合格 |  |
 | 根拠 | 原文引用が指定ページにある | 合格 |  |
 | 根拠 | OCR で読んだページの引用（原資料で照合できない） | 合格 | OCR なし |
 | 版 | 原資料が取得時の記録と一致（SHA-256） | 合格 |  |
 | FpML | XML構文（整形式・ルート要素） | 合格 | dataDocument |
 | FpML | 公式XSD | 未実施（XSD未設定） | XSD未設定（スキーマ検証未実施）  |
-| FpML | 条件との一致：trade.trade_date | 合格 | 条件「2026-10-06」／FpML「2026-10-06」 |
-| FpML | 条件との一致：trade.effective_date | 合格 | 条件「2026-10-08」／FpML「2026-10-08、2026-10-08」 |
-| FpML | 条件との一致：trade.termination_date | 合格 | 条件「2027-10-08」／FpML「2027-10-08、2027-10-08」 |
-| FpML | 条件との一致：trade.notional_currency | 合格 | 条件「JPY」／FpML「JPY、JPY、JPY」 |
-| FpML | 条件との一致：funding.floating_rate_index | 合格 | 条件「JPY-TONA-OIS Compound」／FpML「JPY-TONA-OIS Compound」 |
+| FpML | 条件との整合：trade.trade_date | 合格 | 条件「2026-10-06」→「2026-10-06」／FpML「2026-10-06」 |
+| FpML | 条件との整合：trade.effective_date | 合格 | 条件「2026-10-08」→「2026-10-08」／FpML「2026-10-08」 |
+| FpML | 条件との整合：trade.termination_date | 合格 | 条件「2027-10-08」→「2027-10-08」／FpML「2027-10-08」 |
+| FpML | 条件との整合：trade.notional_amount | 合格 | 条件「1000000000」→「1000000000」／FpML「1000000000」 |
+| FpML | 条件との整合：trade.notional_currency | 合格 | 条件「JPY」→「JPY」／FpML「JPY」 |
+| FpML | 条件との整合：return.underlyer_name | 合格 | 条件「DEMO Japan Credit Bond Index」→「DEMO Japan Credit Bond Ind |
+| FpML | 条件との整合：return.underlyer_id | 合格 | 条件「DEMOJCBI」→「DEMOJCBI」／FpML「DEMOJCBI」 |
+| FpML | 条件との整合：return.valuation_calendar | 合格 | 条件「Tokyo」→「JPTO」／FpML「JPTO」 |
+| FpML | 条件との整合：funding.floating_rate_index | 合格 | 条件「JPY-TONA-OIS Compound」→「JPY-TONA-OIS Compound」／FpML「JPY-T |
+| FpML | 条件との整合：funding.index_tenor | 合格 | 条件で未確認、FpML にも値なし |
+| FpML | 条件との整合：funding.spread_bp | 合格 | 条件「35」→「35」／FpML「0.0035」 |
+| FpML | 条件との整合：funding.day_count | 合格 | 条件「Actual/365 (Fixed)」→「ACT/365.FIXED」／FpML「ACT/365.FIXED」 |
+| FpML | 条件との整合：funding.reset_relative_to | 合格 | 条件「PERIOD_START」→「CalculationPeriodStartDate」／FpML「Calculati |
+| FpML | 条件との整合：funding.reset_frequency | 合格 | 条件「QUARTERLY」→「3M」／FpML「3M」 |
+| FpML | 条件との整合：funding.fixing_offset_days | 合格 | 条件「-2」→「-2」／FpML「-2」 |
+| FpML | 条件との整合：funding.fixing_calendar | 合格 | 条件「Tokyo」→「JPTO」／FpML「JPTO」 |
+| FpML | 条件との整合：funding.fixing_business_day_convention | 合格 | 条件「Preceding」→「PRECEDING」／FpML「PRECEDING」 |
+| FpML | 条件との整合：funding.payment_frequency | 合格 | 条件「QUARTERLY」→「3M」／FpML「3M」 |
+| FpML | 条件との整合：funding.payment_calendar | 合格 | 条件「Tokyo」→「JPTO」／FpML「JPTO」 |
+| FpML | 条件との整合：funding.payment_business_day_convention | 合格 | 条件「Modified Following」→「MODFOLLOWING」／FpML「MODFOLLOWING」 |
 | 出力 | Aladdin 用JSON | 未作成 | Aladdin の仕様が提示されていないため作らない |
 
 ## 5. 実行例 B：HTML
@@ -122,20 +139,18 @@ FpML：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_122618/result/fpml_DRA
 同じ内容の HTML を入力にした。HTML は全体を1ページとして扱い、根拠の位置には条項名を書く。
 
 ```
-12:26:26 [c1] PowerShell を起動します（Claude：demo）
-12:26:27 [c1-ps] 資料の取得：output/c1_trs/walkthrough/DEMO_TRS_confirmation.htm（ローカルファイル）
-12:26:28 [c1-ps] 資料の取得：DEMO_TRS_confirmation.htm（HTML、1 ページ、SHA-256 058feb78d819…、本文 html_text 1 ページ）
-12:26:28 [c1-ps] Claude 依頼文作成：モード demo
-12:26:28 [c1-ps] Claude 実行：デモ（用意した結果を使う。Claude は呼ばない）
-12:26:28 [c1-ps] Claude 回答取得：デモの結果：output\c1_trs\walkthrough\claude_html
-12:26:28 [c1-ps] 成果物の保存：output\c1_trs\cases\DEMO_TRS_confirmation_20261026_122626\result
-12:26:28 [c1-ps] 終了：状態：要確認（終了コード 0）　案件フォルダ：output\c1_trs\cases\DEMO_TRS_confirmation_20261026_122626
-12:26:29 [c1] PowerShell が終了しました（終了コード 0：成果物あり（R の検証待ち））
-状態：要確認（FpML の公式XSD 検証が未実施または不適合）
-段階：資料 取得済み／読解用データ 作成済み（html_text 1 ページ）／Claude 取得済み（デモ：Claude は呼んでいない）／成果物 保存済み（R の検証待ち）
-取得：local_file、html、HTTP —、2026-10-26T12:26:28+09:00、SHA-256 058feb78d819…
-JSON：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_122626/result/conditions.json
-FpML：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_122626/result/fpml_DRAFT.xml（ドラフト：未検証または条件不足）
+13:10:41 [c1] 資料の取得：output/c1_trs/walkthrough/DEMO_TRS_confirmation.htm
+13:10:42 [c1] 資料の取得：DEMO_TRS_confirmation.htm（HTML、1 ページ、SHA-256 058feb78d819…、本文 html_text 1 ページ、文字コード utf-8）
+13:10:42 [c1] Claude 依頼文作成：モード demo
+13:10:42 [c1] Claude 実行：デモ（用意した結果を使う。Claude は呼ばない）
+13:10:42 [c1] 成果物の保存：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_131041/result
+13:10:43 [c1] 終了：状態：要確認（公式XSD：未実施（XSD未設定））
+状態：要確認（公式XSD：未実施（XSD未設定））
+段階：資料 取得済み／読解用データ 作成済み（html_text 1 ページ）／Claude 取得済み（デモ：Claude は呼んでいない）／成果物 保存済み
+取得：local_file、html、HTTP NA、文字コード utf-8、2026-10-26T13:10:41+0900、SHA-256 058feb78d819…
+JSON：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_131041/result/conditions.json
+FpML：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_131041/result/fpml_DRAFT.xml（ドラフト：未検証または条件不足）
+判定：XML構文 合格／公式XSD 未実施（XSD未設定）／原文根拠 合格／条件JSONとの整合 合格
 ■ トータル・リターン・スワップか：はい（根拠 p.1）
 ```
 
@@ -144,11 +159,9 @@ FpML：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_122626/result/fpml_DRA
 存在しないファイルを指定した。原資料を取得できないため、Claude には進まずに止まる（URL の 404・403 も同じ扱い。9 章）。
 
 ```
-12:26:33 [c1] PowerShell を起動します（Claude：demo）
-12:26:35 [c1-ps] 資料の取得：data/demo_c1_trs/pdf/DEMO_TRS_missing.pdf（ローカルファイル）
-12:26:35 [c1-ps] 中止：資料を取得できません（取得失敗）: ファイルがありません: data/demo_c1_trs/pdf/DEMO_TRS_missing.pdf
-12:26:35 [c1-ps] 終了：状態：取得失敗（終了コード 3）　案件フォルダ：output\c1_trs\cases\DEMO_TRS_missing_20261026_122633
-12:26:35 [c1] PowerShell が終了しました（終了コード 3：取得失敗（資料を取得できない））
+13:10:47 [c1] 資料の取得：data/demo_c1_trs/pdf/DEMO_TRS_missing.pdf
+13:10:47 [c1] 中止：資料を取得できません（取得失敗）: ファイルがありません: data/demo_c1_trs/pdf/DEMO_TRS_missing.pdf
+13:10:47 [c1] 終了：状態：取得失敗
 状態：取得失敗
 段階：資料 取得失敗／読解用データ 未実行／Claude 未実行／成果物 未実行
 ```
@@ -172,7 +185,7 @@ output/c1_trs/cases/<案件ID>/
 ```json
   "conditions": [
     {
-      "case_id": "DEMO_TRS_confirmation_20261026_122618",
+      "case_id": "DEMO_TRS_confirmation_20261026_131035",
       "item_id": "trade.product_type",
       "leg_id": "trade",
       "seq": 1,
@@ -220,15 +233,10 @@ output/c1_trs/cases/<案件ID>/
 
 ## 9. URL からの取得（HTTP 応答のモック）
 
-`pwsh -File scripts/test_c1_http_mock.ps1`：ネットワークにつながず、HTTP の応答を差し替えて取得処理を確かめた結果。
+R の取得処理（`acquire_document_c1()`）に HTTP 応答のモックを渡した結果（ネットワークにつながない）。全体のテストは `Rscript scripts/test_c1_case_mock.R`。
 
 ```
-合格  200：PDF を取得し、形式は pdf
-合格  User-Agent は環境変数の値を見出しで渡す
-合格  200：中身が PDF なら Content-Type が違っても pdf（判定根拠を記録）
-合格  200：HTML（Windows-1252、文字参照 &#147; も）を文字化けせずに本文にする
-合格  403：取得失敗。User-Agent の設定方法を案内し、ファイルを残さない
-合格  404：取得失敗
-合格  追跡用パラメータ（utm_）だけを除く
-7／7 件が期待どおり
+https://mock.example/ok.pdf?utm_source=x → 取得元 https://mock.example/ok.pdf、HTTP 200、pdf、SHA-256 8b9ba2ffe79a…
+https://mock.example/denied.htm → 資料を取得できません（取得失敗）: HTTP 403（アクセスを拒否されました）。アクセス制限の回避はしません
+https://mock.example/missing.pdf → 資料を取得できません（取得失敗）: HTTP 404
 ```

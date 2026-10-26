@@ -1,6 +1,6 @@
 ﻿<#
 c1：Windows 標準の OCR（Windows.Media.Ocr）で画像の文字を読む。追加のソフトは不要。
-WinRT を使うため Windows PowerShell 5.1（powershell.exe）で実行する（pwsh 7 からは子プロセスとして呼ぶ）。
+WinRT を使うため Windows PowerShell 5.1（powershell.exe）で実行する。c1 の R（reading_data.R）が、文字のない PDF ページについてだけ呼ぶ。
 言語は利用者のプロフィールの言語（日本語の Windows なら日本語と英語など）。結果は UTF-8 のテキストファイルに書く。
 
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File ocr_windows.ps1 -ImagePath p1.png -OutPath p1.txt

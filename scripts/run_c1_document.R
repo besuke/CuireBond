@@ -37,15 +37,19 @@ if (!is.null(case$results$manifest$stages)) {
       "／成果物 ", st$outputs, "\n", sep = "")
   acq <- case$results$manifest$acquisition
   if (!is.null(acq)) {
-    cat("取得：", acq$source_type, "、", acq$format$kind, "、HTTP ", acq$http_status %||% "—", "、", acq$retrieved_at,
+    cat("取得：", acq$source_type, "、", acq$format$kind, "、HTTP ", acq$http_status %||% "—",
+        if (!is.null(acq$encoding)) paste0("、文字コード ", acq$encoding), "、", acq$retrieved_at,
         "、SHA-256 ", substr(acq$sha256, 1, 12), "…\n", sep = "")
   }
 }
-if (!is.null(case$error)) cat("エラー：", case$error, "\n")
+if (!is.null(case$results$failure)) cat("理由：", case$results$failure$message, "\n", sep = "")
 json <- case$results$files[["json"]] %||% NA_character_
 if (!is.na(json)) cat("JSON：", json, "\n", sep = "")
 if (!is.null(case$fpml) && !is.na(case$fpml)) {
   cat("FpML：", case$fpml, if (grepl("DRAFT", case$fpml)) "（ドラフト：未検証または条件不足）" else "（最終版）", "\n", sep = "")
+}
+if (length(case$validation$verdicts)) {
+  cat("判定：", paste(names(case$validation$verdicts), unlist(case$validation$verdicts), sep = " ", collapse = "／"), "\n", sep = "")
 }
 
 if (!is.null(case$validation)) {
@@ -64,7 +68,7 @@ if (!is.null(terms)) {
   got <- dplyr::filter(terms, 結果 == "取得できた")
   missing <- dplyr::filter(terms, 結果 == "取得できなかった")
   cat("\n■ 取得できたもの（", nrow(got), "項目）\n", sep = "")
-  print(dplyr::select(got, 区分, 項目, 番号, 値, ページ, 確認状態), n = Inf, width = Inf)
+  print(dplyr::select(got, 区分, 項目, レッグ, 番号, 値, ページ, 引用の確認, 確認状態), n = Inf, width = Inf)
   cat("\n■ 取得できなかったもの（", nrow(missing), "項目）\n", sep = "")
   print(dplyr::select(missing, 区分, 項目, 確認状態, 理由), n = Inf, width = Inf)
 

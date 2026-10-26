@@ -165,12 +165,14 @@ APIの仕様、認証、権限、承認フローは後で提示される。エ�
 
 ## C1 TRSターム条件の読解・JSON・FpML ［実装済み・FpMLの公式XSD検証は未設定］
 
-各社のTRS確認書・ターム条件（PDF・HTML。公開URLまたはローカル・Box Drive のファイル）を、Claude が
-指示書（`docs/c1_trs_extraction_instructions.md`）に従って読み、根拠（ページ・引用）つきの条件 JSON と FpML を作る。
-R が条件・根拠・FpML を検証する。TRSの価格計算はしない。詳細は `R/c1_trs_terms/README.md`。
+各社のTRS確認書・ターム条件（PDF・HTML。公開URLまたはローカル・Box Drive のファイル）を、R が取得・記録し、
+R から起動した Claude Code が指示書（`docs/c1_trs_extraction_instructions.md`）に従って原資料を直接読み、
+根拠（ページ・引用）つきの条件 JSON と FpML を作る。R が検証・保存・表示する（R → Claude Code → R。PowerShell は OCR の補助だけ）。
+TRSの価格計算はしない。詳細は `R/c1_trs_terms/README.md`。
 
 - 値の状態（記載あり／空欄／選択肢／記載なし）を区別し、推測で埋めない
-- 原文の引用が指定ページに実在するかを R が確かめる（AIの作り話・ページの誤りを検出）
-- 正式なFpML（fpml_final.xml）は、検証に合格し、必須項目がそろい、公式XSDに適合したときだけ。それ以外はドラフト
+- 記載ありの値には原文の引用が必要。引用が指定ページに実在するかを R が確かめる（AIの作り話・ページの誤りを検出）
+- FpML の値は、レッグと番号ごとに条件 JSON と比べる（別レッグの値・部分一致では合格にしない。対応できない項目は未検証）
+- 正式なFpML（fpml_final.xml）は、XML構文・公式XSD・原文根拠・条件との整合がすべて合格し、必須項目がそろったときだけ。それ以外はドラフト
 - 公開サンプル（SEC の確認書）で実読解を試験済み
 - 今後：同じ資料での複数回実行の揺れの測定、正解つき試験PDFでの正答率、Aladdin用JSON

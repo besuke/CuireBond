@@ -13,7 +13,7 @@
 | B1 | ファンド戦略・制約条件の読込 | 未実装 |
 | B2 | ポートフォリオ入れ替え提案 | 未実装 |
 | B3 | Aladdin APIによる発注 | 未実装 |
-| C1 | TRS 確認書 → Claude の読解 → 条件 JSON・FpML（R で検証） | 実装済み（FpML の公式XSD 検証は未設定、Aladdin用JSONは未実装） |
+| C1 | TRS 確認書 → R → Claude Code → R（取得・読解・検証）→ 条件 JSON・FpML | 実装済み（FpML の公式XSD 検証は未設定、Aladdin用JSONは未実装） |
 | Z0 | 共通関数 | A1が使う範囲をデモ実装済み |
 
 A1 の本番連携で未完了の内容：
@@ -103,7 +103,7 @@ R/
   b1_fund_strategy/   Phase 2：ファンド戦略・制約条件の読込（未実装。READMEのみ）
   b2_rebalancing/     Phase 2：ポートフォリオ入れ替え提案（未実装。READMEのみ）
   b3_aladdin_orders/  Phase 2：Aladdin APIによる発注（未実装。READMEのみ）
-  c1_trs_terms/       C1：TRS 確認書の読解（PowerShell・Claude）と検証、条件 JSON・FpML
+  c1_trs_terms/       C1：TRS 確認書の取得・Claude Code の起動・検証（R）、条件 JSON・FpML
   z0_utility/         共通関数（lagrange/ に Part II の移植関数）
 scripts/              デモの生成（demo_data/）と実行スクリプト
 config/               実データ用の設定のサンプル
@@ -148,7 +148,7 @@ install.packages(c("tidyverse", "writexl", "collapse", "flextable", "withr"))   
 ```
 
 QuantLib と GaussQuant は別途導入する。実データ用の設定は `config/settings_example.R` を
-`config/settings_local.R` にコピーして書き換える（`*_local.R` と `.Renviron` はGit管理対象外）。
+`config/settings_local.R` にコピーして書き換える（`*_local.R` と `.Renviron` はGit管理対象外）。個人用の環境変数（例：`CURIE_HTTP_USER_AGENT`）は `tmp/.Renviron` に書く（`R/load_CURIE.R` が読み込む。`tmp/` はGit管理対象外）。
 APIキー・認証情報はリポジトリに含めない。
 
 Windowsでスマートアプリコントロールが有効な場合、CRANの一部パッケージのDLL（cli など）が

@@ -10,6 +10,9 @@
 !/data/.gitkeep
 /output/*
 !/output/.gitkeep
+# 個人用の設定・一時ファイル（tmp/.Renviron など）
+/tmp/*
+!/tmp/.gitkeep
 
 # Quarto の生成物（HTML・補助フォルダ・作業ファイル）。QMD本体は管理対象
 *.html

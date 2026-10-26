@@ -11,6 +11,9 @@
 #   b2_rebalancing/   Phase 2：ポートフォリオ入れ替え提案（未実装）
 #   b3_aladdin_orders/ Phase 2：Aladdin APIによる発注（未実装）
 
+# 個人用の設定（例：CURIE_HTTP_USER_AGENT）。tmp/.Renviron があれば読み込む（Git に入れない。値は表示しない）
+if (file.exists(file.path("tmp", ".Renviron"))) readRenviron(file.path("tmp", ".Renviron"))
+
 source(file.path("R", "z0_utility", "00_dependencies.R"), encoding = "UTF-8")
 check_packages_CURIE()
 load_lagrange_functions_CURIE()   # 移植したPart IIの関数（R/z0_utility/lagrange/）
@@ -22,8 +25,8 @@ load_lagrange_functions_CURIE()   # 移植したPart IIの関数（R/z0_utility/
   a1_offer_sheet = c("convert_offer_sheet.R", "spread_inputs.R", "validate_offer_worksheet.R",
                      "compute_offer_pricing.R", "write_offer_results_excel.R", "workflows_offer_sheet.R",
                      "report_tables.R"),
-  # c1 は jsonlite・xml2・pdftools・openssl を使う（関数を呼んだときに必要）
-  c1_trs_terms = c("trs_fields.R", "verify_quotes.R", "fpml_trs.R", "fpml_validate.R",
-                   "read_results.R", "validate_results.R", "workflows_c1_case.R")
+  # c1 は jsonlite・xml2・pdftools・openssl・curl・processx を使う（関数を呼んだときに必要）
+  c1_trs_terms = c("trs_fields.R", "verify_quotes.R", "fpml_trs.R", "fpml_validate.R", "acquire_document.R",
+                   "reading_data.R", "claude_agent.R", "read_results.R", "validate_results.R", "workflows_c1_case.R")
 )
 purrr::iwalk(.curie_modules, \(files, dir) purrr::walk(files, \(f) source(file.path("R", dir, f), encoding = "UTF-8")))

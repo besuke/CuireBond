@@ -1,6 +1,6 @@
 # c1 の動き方の説明PDF（docs/c1_walkthrough.pdf）を作る。
 # 架空のデモ契約書（ローカルの PDF・HTML）で実際に3つの経路を実行し、その画面出力と成果物から説明文書を作る。
-# Claude はモック（費用なし）。URL からの取得は scripts/test_c1_http_mock.ps1（HTTP 応答のモック）で確かめる。
+# Claude はモック（費用なし）。URL からの取得は、R の取得処理に HTTP 応答のモックを渡して確かめる（9 章。ネットワークにつながない）。
 #   A. 成功（PDF）
 #   B. 成功（HTML。全体を1ページとして扱う）
 #   C. 取得失敗（資料がない）
@@ -31,8 +31,16 @@ run_case <- function(src, demo_dir) {
 }
 cases <- list(A = run_case(demo$pdf, claude_demo), B = run_case(html, claude_html), C = run_case(missing_file, claude_demo))
 # URL からの取得は HTTP 応答のモックで確かめる（ネットワークにつながない）
-http_test <- system2(Sys.which("pwsh"), c("-NoProfile", "-File", "scripts/test_c1_http_mock.ps1"), stdout = TRUE, stderr = TRUE)
-http_test <- http_test[nzchar(trimws(http_test))]
+http_test <- purrr::map_chr(c("https://mock.example/ok.pdf?utm_source=x", "https://mock.example/denied.htm", "https://mock.example/missing.pdf"), function(u) {
+  fetcher <- function(url, path, user_agent) {
+    key <- basename(sub("[?#].*$", "", url))
+    r <- switch(key, "ok.pdf" = list(200L, "application/pdf", readBin(demo$pdf, "raw", file.size(demo$pdf))),
+                "denied.htm" = list(403L, "text/html", charToRaw("Forbidden")), list(404L, "text/html", charToRaw("Not Found")))
+    writeBin(r[[3]], path); list(status = r[[1]], content_type = r[[2]], final_url = url)
+  }
+  a <- tryCatch(acquire_document_c1(u, tempfile("c1_http_"), fetcher = fetcher), error = function(e) conditionMessage(e))
+  if (is.character(a)) paste0(u, " → ", a) else paste0(u, " → 取得元 ", a$source, "、HTTP ", a$http_status, "、", a$format$kind, "、SHA-256 ", substr(a$sha256, 1, 12), "…")
+})
 
 # 2. 説明文書（Quarto → Typst → PDF）
 esc <- function(x) gsub("|", "\\|", x, fixed = TRUE)
@@ -41,9 +49,9 @@ md_table <- function(df) {
   c(paste0("| ", paste(names(df), collapse = " | "), " |"), paste0("|", strrep("---|", ncol(df))),
     purrr::pmap_chr(df, \(...) paste0("| ", paste(c(...), collapse = " | "), " |")))
 }
-# 画面出力のうち、処理の段階を示す行（PowerShell のログ）と結果の行
+# 画面出力のうち、処理の段階を示す行（[c1] のログ）と結果の行
 log_lines <- function(case) {
-  x <- grep("\\[c1-ps\\]|\\[c1\\]|^状態：|^段階：|^取得：|^JSON：|^FpML：|^■ トータル", case$console, value = TRUE)
+  x <- grep("\\[c1\\]|^状態：|^段階：|^取得：|^判定：|^JSON：|^FpML：|^■ トータル", case$console, value = TRUE)
   x <- gsub("C:\\\\AnalyticFin\\\\Projects\\\\CURIE\\\\|C:/AnalyticFin/Projects/CURIE/", "", x)
   substr(x, 1, 160)
 }
@@ -108,8 +116,9 @@ qmd <- c(
   "",
   md_table(tibble::tribble(
     ~担当, ~処理,
-    "PowerShell（R/c1_trs_terms/PS/）", "資料の取得と記録、読解用データ（本文・OCR）、Claude の読解・FpML 作成、JSON・FpML の保存",
-    "R", "入口（URL・ファイルの受付）、終了コード・成果物の受取、条件・根拠・版・FpML（XML構文／公式XSD／条件との一致）の検証、表示"
+    "R（R/c1_trs_terms/）", "資料の取得と記録、読解用データ（本文。文字のないページは OCR）、Claude Code の起動（processx・タイムアウト）、JSON・FpML の保存、検証、表示",
+    "Claude Code（claude -p）", "作業フォルダの原資料（PDF・HTML）と指示書を読み、条件（reviewed.json）・FpML・要確認事項を作る（元の URL から再取得しない）",
+    "PowerShell（R/c1_trs_terms/windows/）", "Windows 標準の OCR の補助だけ（文字のない PDF ページ）"
   )),
   "",
   "## 2. 処理の流れ",
@@ -121,15 +130,17 @@ qmd <- c(
   "5. **保存**：`result/conditions.json`（条件・資料の記録・要確認事項）と FpML",
   "6. **R の検証**：すべて合格し、必須項目がそろい、公式 XSD にも適合したときだけ **検証済み**（`fpml_final.xml`）。それ以外は **要確認**（`fpml_DRAFT.xml`）",
   "",
-  "## 3. 状態と終了コード",
+  "## 3. 状態",
   "",
   md_table(tibble::tribble(
-    ~状態, ~"終了コード", ~意味,
-    "検証済み", "0", "R の検証に合格し、必須項目がそろい、公式 XSD に適合。FpML は fpml_final.xml",
-    "要確認", "0", "成果物はあるが、不合格・未確定・XSD 未検証のどれかがある。FpML は fpml_DRAFT.xml",
-    "取得失敗", "3", "原資料を取得できない（URL がない、アクセス拒否、ファイルがないなど）",
-    "読解失敗／回答形式不正", "6／7", "Claude が原資料を読めない、または結果の形式が不正",
-    "読解用データ作成失敗", "8", "本文を抜き出せず、OCR でも読めない"
+    ~状態, ~意味,
+    "検証済み", "XML構文・公式XSD・原文根拠・条件との整合がすべて合格し、必須項目がそろった。FpML は fpml_final.xml",
+    "要確認", "成果物はあるが、不合格・要確認・未検証・未確定・XSD 未検証のどれかがある。FpML は fpml_DRAFT.xml",
+    "デモ", "Claude がモック。検証に合格しても検証済みにしない",
+    "取得失敗", "原資料を取得できない（URL がない、アクセス拒否、ファイルがないなど）。Claude には進まない",
+    "読解用データ作成失敗", "本文を抜き出せず、OCR でも読めない",
+    "読解失敗", "Claude の失敗（終了コード）・タイムアウト・原資料を読めなかった。途中の結果は使わない",
+    "回答形式不正", "Claude の結果の形式が不正（reviewed.json の項目不足、fpml.xml がないなど）"
   )),
   "",
   "## 4. 実行例 A：PDF",
@@ -179,7 +190,7 @@ qmd <- c(
   "",
   "## 9. URL からの取得（HTTP 応答のモック）",
   "",
-  "`pwsh -File scripts/test_c1_http_mock.ps1`：ネットワークにつながず、HTTP の応答を差し替えて取得処理を確かめた結果。",
+  "R の取得処理（`acquire_document_c1()`）に HTTP 応答のモックを渡した結果（ネットワークにつながない）。全体のテストは `Rscript scripts/test_c1_case_mock.R`。",
   "",
   "```", http_test, "```"
 )

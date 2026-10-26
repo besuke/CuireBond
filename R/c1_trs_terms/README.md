@@ -1,21 +1,22 @@
-# c1_trs_terms：TRS 確認書 → Claude の読解 → 条件 JSON・FpML［実装済み・FpML の公式XSD 検証は未設定］
+# c1_trs_terms：TRS 確認書 → R → Claude Code → R［実装済み・FpML の公式XSD 検証は未設定］
 
-各社の TRS 確認書・ターム条件を Claude に読ませ、根拠（ページ・位置・原文の引用）つきの条件 JSON と FpML を作り、
-R で検証する。TRS の価格計算はしない。Aladdin 用 JSON は仕様の提示後に追加する。
+各社の TRS 確認書・ターム条件を Claude Code に読ませ、根拠（ページ・位置・原文の引用）つきの条件 JSON と FpML を作り、
+R で検証する。処理の制御はすべて R（PowerShell は OCR の補助だけ）。TRS の価格計算はしない。Aladdin 用 JSON は仕様の提示後に追加する。
 
 ```
 資料の URL（またはファイルのパス）をコンソールに貼る
           │
           ▼
-   PowerShell（PS/run_document.ps1）
-     1. 原資料の取得と記録（取得元・取得日時・HTTP・Content-Type・形式の判定根拠・SHA-256）
-     2. 読解用データ（PDF はページごとの本文、文字のないページは Windows 標準の OCR、HTML は本文）
-     3. Claude Code（claude -p）が原資料を読み、reviewed.json・fpml.xml・review_items.md を作る
-     4. 成果物：result/conditions.json と result/fpml.xml
-          │  終了コード
+   R：取得と記録（取得元・取得日時・HTTP・Content-Type・形式の判定根拠・文字コード・SHA-256）     acquire_document.R
+   R：読解用データ（PDF はページごとの本文、文字のないページは Windows 標準の OCR、HTML は本文）   reading_data.R
+          │
           ▼
-   R：条件（定義・重複・必須・型・単位・日付の順序・商品の種類）、根拠（引用の実在）、版（SHA-256）、
-      FpML（XML構文／公式XSD／条件との一致）を検証 → fpml_final.xml または fpml_DRAFT.xml
+   Claude Code（claude -p。R が processx で起動。タイムアウトあり）                                    claude_agent.R
+     作業フォルダの原資料（document.pdf／document.htm）と指示書を読み、reviewed.json・fpml.xml・review_items.md を作る
+          │
+          ▼
+   R：result/conditions.json と FpML を保存 → 検証（4つの判定）→ fpml_final.xml または fpml_DRAFT.xml   workflows_c1_case.R
+        XML構文／公式XSD／原文根拠（引用）／条件 JSON との整合（FpML の値。レッグ・番号ごと）          validate_results.R
 ```
 
 ## 守ること
@@ -23,9 +24,15 @@ R で検証する。TRS の価格計算はしない。Aladdin 用 JSON は仕様
 - **推測で埋めない**：値の状態（記載あり／空欄／選択肢（未確定）／記載なし）を区別する
 - **区別すること**：参照資産・指数と資金調達の参照金利、参照資産の評価日と資金調達金利のフィキシング／リセット日
 - **旧参照金利**：原文どおり（例：USD-LIBOR-BBA を SOFR に置き換えない）
-- **根拠を確かめる**：Claude の引用が原資料の指定ページにあるかを R が独自に抜き出した本文で確かめる
-- **最終版の条件**：検証にすべて合格し、必須項目がすべて原文で確認され、公式XSD にも適合したときだけ「検証済み」（fpml_final.xml）。
+- **原資料を直接読ませる**：Claude には取得した原資料を渡す（元の URL から再取得させない。ウェブ取得のツールは渡さない）
+- **根拠を確かめる**：記載ありで確認済みの値には引用が必要（なければ「引用なし（要確認）」）。記載のない項目は「引用不要」。
+  引用が原資料の指定ページにあるかを、R が抜き出した本文で確かめる
+- **FpML の整合**：元本額・通貨・参照資産・参照金利・テナー・スプレッド・日数計算・リセット・フィキシング・カレンダー・
+  営業日調整・支払頻度などを、レッグ（returnLeg／interestLeg）と番号ごとに比べる。別レッグの値や部分一致では合格にしない。
+  対応する要素がない項目は「未検証」
+- **最終版の条件**：4つの判定がすべて合格し、必須項目がすべて原文で確認されたときだけ「検証済み」（fpml_final.xml）。
   それ以外は「要確認」（fpml_DRAFT.xml）
+- **失敗を成功として扱わない**：Claude の失敗・タイムアウトでは、途中の結果ファイルを使わない（`.incomplete` として残す）
 - **アクセス制限は回避しない**：取得できなければ「取得失敗」として理由を表示する
 
 ## 実行方法
@@ -36,14 +43,15 @@ source("scripts/run_c1_document.R", encoding = "UTF-8")   # 「資料のURL（�
 
 ```
 Rscript scripts/run_c1_document.R <URLまたはファイルのパス> [--claude=api|demo] [--claude-demo-dir=<フォルダ>] [--show-fpml]
-Rscript scripts/test_c1_case_mock.R        # モックテスト（Claude を呼ばない。ネットワークにつながない）
-pwsh -File scripts/test_c1_http_mock.ps1   # URL 取得のテスト（HTTP 応答のモック）
+Rscript scripts/test_c1_case_mock.R        # モックテスト（Claude を呼ばない。HTTP 応答もモック）
 Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_walkthrough.pdf）
 ```
 
 - 入力：公開 PDF・HTML の URL、ローカルの PDF・HTML。Box の資料は Box Drive の同期フォルダのパスを貼る
-- 公開元によっては名前と連絡先を含む User-Agent が必要（SEC など）：`.Renviron` に `CURIE_HTTP_USER_AGENT="氏名 メールアドレス"`
-- Claude が PDF を読むには poppler（pdftoppm）が必要（winget の oschwartz10612.Poppler）
+- モード：`api`（Claude Code を実行）／`demo`（用意した結果を使う。Claude は呼ばない）。黙って切り替えない
+- 公開元によっては名前と連絡先を含む User-Agent が必要（SEC など）：`tmp/.Renviron` に `CURIE_HTTP_USER_AGENT="氏名 メールアドレス"` と書く（`R/load_CURIE.R` が読み込む。`tmp/` は Git 管理対象外）
+- Claude Code：`claude` を PATH から探す（`CURIE_CLAUDE_CMD` で指定可）。タイムアウトは `CURIE_CLAUDE_TIMEOUT_SEC`（既定 1800 秒）
+- Claude が PDF を読むには poppler（pdftoppm）が必要（winget の oschwartz10612.Poppler。`CURIE_POPPLER_BIN` で指定可）
 - FpML の公式XSD：`CURIE_FPML_XSD` に公式スキーマ一式のファイルを指定する（未設定なら「検証済み」にならない）
 
 ## 案件フォルダ（`output/c1_trs/cases/<案件ID>/`）
@@ -52,29 +60,29 @@ Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_wa
 |---|---|
 | `result/conditions.json` | **成果物**：条件（1項目1件。leg_id・seq で反復を区別）、資料・取得の記録、要確認事項 |
 | `result/fpml_final.xml`／`fpml_DRAFT.xml` | **成果物**：FpML（検証済みなら final、それ以外は DRAFT） |
-| `manifest.json` | 段階ごとの状態・終了コード・エラー |
-| `r_validation.json` | R の検証結果 |
+| `manifest.json` | 段階ごとの状態、失敗の種類と理由、取得・読解用データ・Claude の実行記録（終了コード・秒数・タイムアウト・費用の目安） |
+| `r_validation.json` | R の検証結果（4つの判定と各検証） |
 | `source/` | 原資料（そのまま）、取得記録、読解用データ |
-| `agents/claude/` | Claude への依頼文・読解結果・FpML 案・実行記録 |
+| `agents/claude/` | Claude への依頼文・原資料の写し・結果・標準出力（`claude_stdout.txt`）・標準エラー（`claude_stderr.txt`） |
 | `logs/run_log.jsonl` | 段階ごとのログ |
 
-終了コード：0 成果物あり（R の検証待ち）、3 取得失敗、6 Claude 読解失敗、7 Claude 回答形式不正、8 読解用データ作成失敗、1 想定外のエラー
+状態：検証済み／要確認／デモ／取得失敗／読解用データ作成失敗／読解失敗（Claude の失敗・タイムアウト・読めなかった）／回答形式不正
 
 ## ファイル
 
 | ファイル | 役割 |
 |---|---|
-| `PS/run_document.ps1` | 入口（取得・読解用データ・Claude・成果物の保存） |
-| `PS/common.ps1` | 共通処理（ログ、終了コード、取得、形式の判定、文字コード、本文抽出、OCR の呼び出し） |
-| `PS/invoke_claude.ps1` | Claude Code の実行と、結果の形式チェック |
-| `PS/ocr_windows.ps1` | Windows 標準の OCR（Windows PowerShell 5.1 で実行） |
-| `trs_fields.R` | 抽出項目の定義、値の状態 |
-| `verify_quotes.R` | 引用照合のための正規化、SHA-256 |
-| `fpml_trs.R` | FpML の作成（デモ用） |
-| `fpml_validate.R` | FpML の構文・スキーマ検証（xml2） |
+| `workflows_c1_case.R` | 1件の全工程（`workflows_c1_case()`）、コンソール表示用の要約 |
+| `acquire_document.R` | 取得と記録（curl。User-Agent、形式の判定、追跡用パラメータの除去） |
+| `reading_data.R` | 本文の抽出（PDF・HTML の文字コードと &#147; など）、OCR の呼び出し |
+| `claude_agent.R` | Claude Code の作業フォルダ・依頼文・起動（processx）・結果の形式チェック |
 | `read_results.R` | 案件フォルダの読込 |
 | `validate_results.R` | 条件・根拠・版・FpML の検証 |
-| `workflows_c1_case.R` | 1件の全工程（`workflows_c1_case()`） |
+| `trs_fields.R` | 抽出項目の定義、値の状態 |
+| `verify_quotes.R` | 引用照合のための正規化、SHA-256 |
+| `fpml_trs.R` | FpML の作成（デモ用）と、FpML のコード変換表（照合でも使う） |
+| `fpml_validate.R` | FpML の構文・スキーマ検証（xml2） |
+| `windows/ocr_windows.ps1` | Windows 標準の OCR（Windows PowerShell 5.1。文字のない PDF ページだけに使う） |
 
 ## 未完了
 
