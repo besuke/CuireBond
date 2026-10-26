@@ -295,7 +295,7 @@ c1_inbox_banner <- function(config, extra = NULL) {
   ==================================================================
     Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.
 )")
-  say_Curie("[*]  Contract validation started.")
+  say_Curie("[*]  CURIE OTC Derivative is monitoring contract PDFs.")
   say_path_Curie("Watching PDF files directly under this folder (subfolders such as processed are excluded).", config$inbox, "dir")
   say_path_Curie("Completed cases are saved under this folder.", config$processed, "dir")
   if (length(extra)) say_Curie(paste(extra, collapse = "\n"))
