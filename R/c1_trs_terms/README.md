@@ -100,6 +100,7 @@ stop_c1_inbox_watch(config)                         # 停止（処理中の1件�
     Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.
 
 [*]  CURIE OTC Derivative is monitoring contract PDFs.
+[*]  Aladdin API payloads are prepared for each case (DRAFT / NOT SENT).
 Watching PDF files directly under this folder (subfolders such as processed are excluded).
 dir:C:/AnalyticFin/temp/TRS_curie_PDF
 Completed cases are saved under this folder.
