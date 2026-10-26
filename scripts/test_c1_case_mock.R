@@ -1,5 +1,5 @@
 # c1 モックテスト：R → Claude Code → R の処理を、Claude を呼ばずに確かめる（ネットワークにもつながない）。
-#   取得：ローカル PDF・HTML、画像だけの PDF（OCR）、ファイルがない、URL の 200／403／404（HTTP 応答のモック）、
+#   取得：ローカル PDF・HTML、画像だけの PDF（本文なし）、ファイルがない、URL の 200／403／404（HTTP 応答のモック）、
 #         Content-Type と中身の食い違い、HTML の Windows-1252 と &#147;、追跡用パラメータの除去
 #   Claude：失敗（終了コード）、タイムアウト、古い成果物を使わない、読めなかった、回答形式不正
 #   検証：引用の改ざん、記載ありなのに引用なし、FpML の値の違い・部分一致・別レッグの値、公式XSD 適合時の最終版
@@ -39,6 +39,23 @@ local({
   xml2::xml_add_child(xml2::xml_add_child(rl, "spreadSchedule"), "initialValue", "0.0035")
   xml2::write_xml(doc, p)
 })
+# 参照の形：interestLeg の支払日を「returnLegPaymentDates と同じ」とだけ書き、営業日調整・カレンダーは参照先に置く
+# （href が存在しない id を指す場合は、たどれないので未検証のまま）
+fpml_ref <- function(name, href) {
+  d <- fx(name); p <- file.path(d, "fpml.xml"); doc <- xml2::read_xml(p)
+  ilp <- xml2::xml_find_first(doc, "//*[local-name()='interestLegPaymentDates']")
+  xml2::xml_remove(xml2::xml_children(ilp))
+  rd <- xml2::xml_add_child(ilp, "relativeDates")
+  xml2::xml_add_child(rd, "periodMultiplier", "0"); xml2::xml_add_child(rd, "period", "D")
+  xml2::xml_add_child(rd, "dateRelativeTo", href = href)
+  rl <- xml2::xml_find_first(doc, "//*[local-name()='returnLeg']")
+  rel <- xml2::xml_add_child(xml2::xml_add_child(xml2::xml_add_child(rl, "paymentDates", id = "returnLegPaymentDates"), "paymentDatesInterim"), "relativeDates")
+  xml2::xml_add_child(rel, "businessDayConvention", "MODFOLLOWING")
+  xml2::xml_add_child(xml2::xml_add_child(rel, "businessCenters"), "businessCenter", "JPTO")
+  xml2::write_xml(doc, p); d
+}
+claude_fpml_ref <- fpml_ref("claude_fpml_ref", "returnLegPaymentDates")
+claude_fpml_badref <- fpml_ref("claude_fpml_badref", "noSuchId")
 claude_unreadable <- file.path(fixtures, "claude_unreadable"); dir.create(claude_unreadable)
 writeLines("読めなかった：document.pdf のページを表示できない", file.path(claude_unreadable, "review_items.md"), useBytes = TRUE)
 claude_bad <- file.path(fixtures, "claude_bad"); dir.create(claude_bad)
@@ -84,7 +101,7 @@ cases <- tibble::tribble(
   ~name,                         ~src,                                      ~mode,  ~demo_dir,            ~run,     ~xsd,     ~expect,
   "成功（ローカルPDF）",         pdf,                                       "demo", claude_ok,            NULL,     "",       "要確認（公式XSD",
   "ローカルHTML",                html,                                      "demo", claude_html,          NULL,     "",       "要確認（公式XSD",
-  "画像だけのPDF（OCR）",        scanned,                                   "demo", claude_ok,            NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、原文根拠：要確認",
+  "画像だけのPDF（本文なし）",        scanned,                                   "demo", claude_ok,            NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、原文根拠：要確認",
   "URL 200（PDF）",              "https://mock.example/ok.pdf?utm_source=x", "demo", claude_ok,           NULL,     "",       "要確認（公式XSD",
   "URL 200（中身は PDF、型は別）", "https://mock.example/mislabel.bin",     "demo", claude_ok,            NULL,     "",       "要確認（公式XSD",
   "URL 200（HTML・Windows-1252）", "https://mock.example/page.htm",         "demo", claude_html,          NULL,     "",       "要確認（公式XSD",
@@ -100,6 +117,8 @@ cases <- tibble::tribble(
   "FpML の値が違う",             pdf,                                       "demo", claude_fpml_date,     NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：不合格",
   "FpML の部分一致",             pdf,                                       "demo", claude_fpml_partial,  NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：不合格",
   "FpML の別レッグの値",         pdf,                                       "demo", claude_fpml_otherleg, NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：未検証",
+  "FpML の参照（dateRelativeTo）", pdf,                                     "demo", claude_fpml_ref,      NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：未検証",
+  "FpML の参照先がない",         pdf,                                       "demo", claude_fpml_badref,   NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：未検証",
   "XSD 適合（テスト用XSD）",     pdf,                                       "demo", claude_ok,            NULL,     test_xsd, "デモ"
 )
 results <- purrr::pmap(cases, function(name, src, mode, demo_dir, run, xsd, expect) {
@@ -120,6 +139,11 @@ check <- function(name, ok) tibble::tibble(テスト = name, 状態 = if (isTRUE
 man <- function(i) jsonlite::fromJSON(file.path(root, "cases", sprintf("mock_%02d", i), "manifest.json"))
 reading <- function(i) jsonlite::fromJSON(file.path(root, "cases", sprintf("mock_%02d", i), "source", "reading_pages.json"))
 i_of <- function(name) match(name, cases$name)
+payment_rows <- function(i) {
+  v <- jsonlite::fromJSON(file.path(root, "cases", sprintf("mock_%02d", i), "r_validation.json"))$checks
+  v <- v[grepl("^条件との整合：funding.payment", v$検証), ]
+  transform(v, item = sub("^条件との整合：", "", v$検証))
+}
 # 古い成果物：作業フォルダに前回の reviewed.json を置いたまま失敗させても、使わない
 stale_dir <- file.path(root, "stale"); dir.create(stale_dir)
 writeLines("{\"fields\": []}", file.path(stale_dir, "reviewed.json"))
@@ -131,10 +155,34 @@ results <- dplyr::bind_rows(results,
   check("中身と Content-Type の食い違いを記録", nzchar(man(i_of("URL 200（中身は PDF、型は別）"))$acquisition$format$note)),
   check("HTML の文字コードを記録（Windows-1252）", identical(man(i_of("URL 200（HTML・Windows-1252）"))$acquisition$encoding, "windows-1252")),
   check("403 の理由に「回避しない」を表示", grepl("HTTP 403.*回避はしません", man(i_of("URL 403"))$failure$message)),
-  check("画像だけのPDF を OCR で読む", all(reading(i_of("画像だけのPDF（OCR）"))$method == "ocr_windows")),
+  check("画像だけのPDF を本文なしとして記録（止めない）", all(reading(i_of("画像だけのPDF（本文なし）"))$method == "no_text")),
   check("タイムアウトで Claude を止める", isTRUE(man(i_of("Claude タイムアウト"))$claude$timed_out)),
   check("失敗時に古い・途中の成果物を使わない", stale$state == "failed" && !file.exists(file.path(stale_dir, "reviewed.json"))),
-  check("&#147; を “ として読む", grepl("“Fund”", html_text_c1(local({ p <- tempfile(fileext = ".htm"); writeBin(charToRaw("<html><body>the &#147;Fund&#148;</body></html>"), p); p }))))
+  check("&#147; を “ として読む", grepl("“Fund”", html_text_c1(local({ p <- tempfile(fileext = ".htm"); writeBin(charToRaw("<html><body>the &#147;Fund&#148;</body></html>"), p); p })))),
+  check("参照をたどって支払カレンダー・営業日調整が合格（たどった参照を記録）", local({
+    x <- payment_rows(i_of("FpML の参照（dateRelativeTo）"))
+    all(x$結果[x$item %in% c("funding.payment_calendar", "funding.payment_business_day_convention")] == "合格") &&
+      all(grepl("returnLegPaymentDates", x$詳細[x$item %in% c("funding.payment_calendar", "funding.payment_business_day_convention")]))
+  })),
+  check("参照先の id がなければ支払カレンダー・営業日調整は未検証", local({
+    x <- payment_rows(i_of("FpML の参照先がない"))
+    all(x$結果[x$item %in% c("funding.payment_calendar", "funding.payment_business_day_convention")] == "未検証")
+  })),
+  # Aladdin 送信用 JSON（下書き。送信しない）
+  check("Aladdin：対応表なしでは下書きと未確定を保存し、向き（pay/rec）を未確定にする", local({
+    d <- file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")), "result")
+    u <- jsonlite::fromJSON(file.path(d, "aladdin_unresolved.json"))
+    file.exists(file.path(d, "aladdin_request_DRAFT.json")) && any(grepl("our_party_names", u$unresolved$理由))
+  })),
+  check("Aladdin：対応表（テスト用の架空コード）があれば、日付・スプレッド・ルックバック・カレンダーを正しいレッグに入れる", local({
+    cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")))))$conditions
+    m <- list(our_party_names = list("CURIE Demo Fund"), spread_unit = "decimal", calendar_codes = list(JPTO = "TEST-TOKYO"))
+    p <- build_aladdin_trs_payload_c1(cond, m)$payload
+    identical(p$swapInfo$recLeg$startDate, "2026-10-08") && identical(p$swapInfo$payLeg$spread, 0.0035) &&
+      identical(p$swapInfo$payLegPaymentReset$lookback, 5L) &&
+      identical(unlist(p$swapInfo$payLegPaymentReset$paymentFrequencyCalendar$calendarCodes), "TEST-TOKYO") &&
+      is.null(p$swapInfo$recLeg$spread)
+  }))
 )
 
 # 最終版の経路：同じ成果物を、Claude が api だったとして検証し直す（モックのままでは最終版にしない）

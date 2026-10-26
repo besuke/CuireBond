@@ -13,7 +13,7 @@
 | B1 | ファンド戦略・制約条件の読込 | 未実装 |
 | B2 | ポートフォリオ入れ替え提案 | 未実装 |
 | B3 | Aladdin APIによる発注 | 未実装 |
-| C1 | TRS 確認書 → R → Claude Code → R（取得・読解・検証）→ 条件 JSON・FpML | 実装済み（FpML の公式XSD 検証は未設定、Aladdin用JSONは未実装） |
+| C1 | TRS 確認書 → R → Claude Code → R（取得・読解・検証）→ 条件 JSON・FpML | 実装済み（FpML の公式XSD 検証は未設定、Aladdin 送信用 JSON は下書きのみ・未送信） |
 | Z0 | 共通関数 | A1が使う範囲をデモ実装済み |
 
 A1 の本番連携で未完了の内容：

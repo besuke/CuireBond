@@ -6,7 +6,7 @@
 #   要確認   … 成果物はあるが、不合格・要確認・未検証・必須項目の未確定、または公式XSD が未実施・不適合
 #   検証済み … 4つの判定がすべて合格し、必須項目がすべて原文で確認された（Claude が api のとき）。FpML は fpml_final.xml
 #   デモ     … Claude がデモ（モック）のため、すべて合格しても検証済みとはしない
-# Aladdin 用JSONは仕様の提示前のため作らない。
+# Aladdin 送信用 JSON は下書きだけ作る（aladdin_payload.R。送信先・認証が未提示のため送信しない）。
 
 .c1_review_levels <- c("confirmed", "unresolved", "not_found")
 
@@ -42,17 +42,17 @@
 
 # ---- 原文根拠（引用）------------------------------------------------------------------------
 # 記載あり・確認済みの値には引用が必要（なければ「引用なし（要確認）」）。記載のない項目は「引用不要」。
-# OCR で読んだページは、原資料に文字がないため照合できない（要確認）
+# 本文のないページ（スキャン画像など）は、原資料に文字がないため照合できない（要確認）
 .quote_ok_c1 <- c("一致", "引用不要")
 .quote_checks_c1 <- function(conditions, source_path, kind, reading_pages = NULL) {
   if (is.na(source_path)) return(rep("原資料なし", nrow(conditions)))
-  pages <- .normalize_text_c1(document_pages_c1(source_path, kind, ocr = FALSE)$text)
-  ocr_pages <- if (is.null(reading_pages)) integer() else reading_pages$page[startsWith(reading_pages$method, "ocr")]
+  pages <- .normalize_text_c1(document_pages_c1(source_path, kind)$text)
+  no_text_pages <- if (is.null(reading_pages)) integer() else reading_pages$page[reading_pages$method == "no_text"]
   purrr::pmap_chr(list(conditions$value_status, conditions$source_page, conditions$quote), function(status, p, q) {
     if (!nzchar(q)) return(if (identical(status, "stated")) "引用なし（要確認）" else "引用不要")
     target <- .normalize_text_c1(q)
     p <- suppressWarnings(as.integer(p))
-    if (!is.na(p) && p %in% ocr_pages) return("OCRページ（照合できない）")
+    if (!is.na(p) && p %in% no_text_pages) return("本文なしのページ（照合できない）")
     if (!is.na(p) && p >= 1L && p <= length(pages) && grepl(target, pages[p], fixed = TRUE)) return("一致")
     other <- which(purrr::map_lgl(pages, \(t) grepl(target, t, fixed = TRUE)))
     if (length(other)) paste0("別のページにあり（p.", paste(other, collapse = ","), "）") else "原資料に見つからない"
@@ -90,6 +90,28 @@
                                                                  .x_c1("calculationPeriodDatesAdjustments", "businessDayConvention"),
                                                                  .x_c1("interestLegPaymentDates", "relativeDates", "businessDayConvention")), "code:business_day_convention"
 )
+
+# FpML の参照（dateRelativeTo href）：要素が範囲内に直接書かれていないときだけ、明示された参照先（id）の値で比べる。
+# 例：interestLegPaymentDates が「returnLegPaymentDates と同じ日」と参照し、営業日調整・カレンダーは参照先にだけ書かれている形。
+# たまたま別のレッグに同じ値がある場合とは違い、FpML に書かれた参照だけをたどる（たどった参照は詳細に記録する）
+.fpml_refs_c1 <- tibble::tribble(
+  ~item_id,                                  ~ref_from,                                                         ~ref_xpath,
+  "funding.payment_calendar",                .x_c1("interestLegPaymentDates", "relativeDates", "dateRelativeTo"), ".",
+  "funding.payment_business_day_convention", .x_c1("interestLegPaymentDates", "relativeDates", "dateRelativeTo"), ".//*[local-name()='businessDayConvention']"
+)
+.follow_refs_c1 <- function(doc, leg, item_id, compare) {
+  ref <- dplyr::filter(.fpml_refs_c1, .data$item_id == .env$item_id)
+  if (!nrow(ref)) return(NULL)
+  hrefs <- unique(stats::na.omit(xml2::xml_attr(xml2::xml_find_all(leg, ref$ref_from), "href")))
+  if (!length(hrefs)) return(NULL)
+  purrr::map(hrefs, function(h) {
+    target <- xml2::xml_find_first(doc, paste0("//*[@id='", h, "']"))
+    if (inherits(target, "xml_missing")) return(NULL)
+    nodes <- if (ref$ref_xpath == ".") list(target) else xml2::xml_find_all(target, ref$ref_xpath)
+    v <- purrr::map_chr(nodes, \(nd) .fpml_value_c1(nd, compare))
+    list(href = h, found = v[nzchar(v)])
+  }) |> purrr::compact() |> purrr::keep(\(r) length(r$found) > 0)
+}
 
 # 範囲（レッグ）の要素。seq 番目のレッグ
 .fpml_scope_c1 <- function(doc, scope, seq) {
@@ -143,6 +165,14 @@
       nodes <- if (is.null(leg)) list() else purrr::detect(purrr::map(xpath, \(x) xml2::xml_find_all(leg, x)), \(s) length(s) > 0) %||% list()
       found <- purrr::map_chr(nodes, \(nd) .fpml_value_c1(nd, compare))
       found <- found[nzchar(found)]
+      via <- character()
+      if (!length(found) && !is.null(leg)) {
+        refs <- .follow_refs_c1(doc, leg, item_id, compare)
+        if (length(refs)) {
+          found <- unlist(purrr::map(refs, "found"))
+          via <- purrr::map_chr(refs, "href")
+        }
+      }
       confirmed <- identical(status, "stated") && identical(review, "confirmed")
       if (!confirmed) {
         ok <- !length(found)
@@ -154,7 +184,8 @@
       if (is.null(leg)) return(.check_row_c1("FpML", label, NA, paste0("FpML に ", scope, " がない"), na_label = "未検証"))
       if (!length(found)) return(.check_row_c1("FpML", label, NA, "FpML に対応する要素がない", na_label = "未検証"))
       ok <- all(purrr::map_lgl(found, \(f) .same_value_c1(expected, f, compare)))
-      .check_row_c1("FpML", label, ok, paste0("条件「", value, "」→「", expected, "」／FpML「", paste(found, collapse = "、"), "」"))
+      .check_row_c1("FpML", label, ok, paste0("条件「", value, "」→「", expected, "」／FpML「", paste(found, collapse = "、"), "」",
+                                              if (length(via)) paste0("（参照 dateRelativeTo → ", paste(via, collapse = "、"), " をたどった）") else ""))
     }) |> purrr::list_rbind()
   }) |> purrr::list_rbind()
 }
@@ -193,12 +224,12 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
     (is.na(d$final) || d$final <= d$term)
   product <- dplyr::first(cond$value[cond$item_id == "trade.product_type" & stated], default = NA_character_)
   sha_ok <- if (is.na(results$source_path)) FALSE else identical(pdf_sha256_c1(results$source_path), m$document$sha256)
-  ocr_pages <- if (is.null(results$reading_pages)) integer() else results$reading_pages$page[startsWith(results$reading_pages$method, "ocr")]
+  no_text_pages <- if (is.null(results$reading_pages)) integer() else results$reading_pages$page[results$reading_pages$method == "no_text"]
 
   # 原文根拠
   quote_bad <- !cond$引用の実在確認 %in% .quote_ok_c1
   quote_missing <- cond$引用の実在確認 == "引用なし（要確認）"
-  quote_ocr <- cond$引用の実在確認 == "OCRページ（照合できない）"
+  quote_no_text <- cond$引用の実在確認 == "本文なしのページ（照合できない）"
   # FpML
   fpml <- results$files[["fpml"]]
   fpml_check <- if (!is.na(fpml)) validate_fpml_c1(fpml, xsd_path) else NULL
@@ -222,17 +253,17 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
     .check_row_c1("確認", "必須項目が原文で確認された", !length(unresolved_req), unresolved_req),
     .check_row_c1("根拠", "記載ありの値に原文の引用がある", if (any(quote_missing)) NA else TRUE,
                   if (any(quote_missing)) paste0("引用なし：", paste(cond$item_id[quote_missing], collapse = ", ")) else "", na_label = "要確認"),
-    .check_row_c1("根拠", "原文引用が指定ページにある", !any(quote_bad & !quote_missing & !quote_ocr),
-                  paste0(cond$item_id, "：", cond$引用の実在確認)[quote_bad & !quote_missing & !quote_ocr]),
-    .check_row_c1("根拠", "OCR で読んだページの引用（原資料で照合できない）", if (length(ocr_pages)) NA else TRUE,
-                  if (length(ocr_pages)) paste0("OCR のページ：p.", paste(ocr_pages, collapse = ","), "。人が原資料で確認する") else "OCR なし", na_label = "要確認"),
+    .check_row_c1("根拠", "原文引用が指定ページにある", !any(quote_bad & !quote_missing & !quote_no_text),
+                  paste0(cond$item_id, "：", cond$引用の実在確認)[quote_bad & !quote_missing & !quote_no_text]),
+    .check_row_c1("根拠", "本文のないページの引用（原資料で照合できない）", if (length(no_text_pages)) NA else TRUE,
+                  if (length(no_text_pages)) paste0("本文のないページ：p.", paste(no_text_pages, collapse = ","), "。人が原資料で確認する") else "本文のないページなし", na_label = "要確認"),
     .check_row_c1("版", "原資料が取得時の記録と一致（SHA-256）", sha_ok),
     if (is.null(fpml_check)) .check_row_c1("FpML", "XML構文", FALSE, "fpml.xml がない") else dplyr::bind_rows(
       .check_row_c1("FpML", "XML構文（整形式・ルート要素）", fpml_check$well_formed && fpml_check$root_ok, fpml_check$root_element %|% ""),
       .check_row_c1("FpML", "公式XSD", if (fpml_check$schema_check == "スキーマ適合") TRUE else if (fpml_check$schema_check == "スキーマ不適合") FALSE else NA,
                     paste(fpml_check$schema_check, fpml_check$schema_errors), na_label = "未実施（XSD未設定）"),
       fpml_rows),
-    .check_row_c1("出力", "Aladdin 用JSON", NA, "Aladdin の仕様が提示されていないため作らない", na_label = "未作成")
+    .check_row_c1("出力", "Aladdin への送信", NA, "送信用 JSON は下書きだけ作る（aladdin_request_DRAFT.json）。送信先・認証が未提示のため送信しない", na_label = "未送信")
   )
 
   # 4つの判定（別々に出す）

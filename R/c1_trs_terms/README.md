@@ -1,14 +1,14 @@
 # c1_trs_terms：TRS 確認書 → R → Claude Code → R［実装済み・FpML の公式XSD 検証は未設定］
 
 各社の TRS 確認書・ターム条件を Claude Code に読ませ、根拠（ページ・位置・原文の引用）つきの条件 JSON と FpML を作り、
-R で検証する。処理の制御はすべて R（PowerShell は OCR の補助だけ）。TRS の価格計算はしない。Aladdin 用 JSON は仕様の提示後に追加する。
+R で検証する。処理はすべて R（PowerShell は使わない）。TRS の価格計算はしない。Aladdin 送信用 JSON は下書きだけ作る（送信先・認証が未提示のため送信しない）。
 
 ```
 資料の URL（またはファイルのパス）をコンソールに貼る
           │
           ▼
    R：取得と記録（取得元・取得日時・HTTP・Content-Type・形式の判定根拠・文字コード・SHA-256）     acquire_document.R
-   R：読解用データ（PDF はページごとの本文、文字のないページは Windows 標準の OCR、HTML は本文）   reading_data.R
+   R：読解用データ（PDF はページごとの本文、文字のないページは「本文なし」と記録、HTML は本文） reading_data.R
           │
           ▼
    Claude Code（claude -p。R が processx で起動。タイムアウトあり）                                    claude_agent.R
@@ -29,7 +29,8 @@ R で検証する。処理の制御はすべて R（PowerShell は OCR の補助
   引用が原資料の指定ページにあるかを、R が抜き出した本文で確かめる
 - **FpML の整合**：元本額・通貨・参照資産・参照金利・テナー・スプレッド・日数計算・リセット・フィキシング・カレンダー・
   営業日調整・支払頻度などを、レッグ（returnLeg／interestLeg）と番号ごとに比べる。別レッグの値や部分一致では合格にしない。
-  対応する要素がない項目は「未検証」
+  要素がレッグ内に直接なく、FpML に明示された参照（例：interestLegPaymentDates の `dateRelativeTo href="returnLegPaymentDates"`）が
+  あるときだけ、参照先の値で比べる（たどった参照を詳細に記録）。対応する要素がない項目は「未検証」
 - **最終版の条件**：4つの判定がすべて合格し、必須項目がすべて原文で確認されたときだけ「検証済み」（fpml_final.xml）。
   それ以外は「要確認」（fpml_DRAFT.xml）
 - **失敗を成功として扱わない**：Claude の失敗・タイムアウトでは、途中の結果ファイルを使わない（`.incomplete` として残す）
@@ -41,8 +42,11 @@ R で検証する。処理の制御はすべて R（PowerShell は OCR の補助
 source("scripts/run_c1_document.R", encoding = "UTF-8")   # 「資料のURL（またはファイルのパス）を貼ってください:」
 ```
 
+コンソールには、資料（PDF・HTML）から抜き出した条件の表と、XML（FpML）の保存先だけを表示する。
+検証の詳細（4つの判定と各検証）は `r_validation.json` に保存する。
+
 ```
-Rscript scripts/run_c1_document.R <URLまたはファイルのパス> [--claude=api|demo] [--claude-demo-dir=<フォルダ>] [--show-fpml]
+Rscript scripts/run_c1_document.R <URLまたはファイルのパス> [--claude=api|demo] [--claude-demo-dir=<フォルダ>]
 Rscript scripts/test_c1_case_mock.R        # モックテスト（Claude を呼ばない。HTTP 応答もモック）
 Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_walkthrough.pdf）
 ```
@@ -74,7 +78,7 @@ Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_wa
 |---|---|
 | `workflows_c1_case.R` | 1件の全工程（`workflows_c1_case()`）、コンソール表示用の要約 |
 | `acquire_document.R` | 取得と記録（curl。User-Agent、形式の判定、追跡用パラメータの除去） |
-| `reading_data.R` | 本文の抽出（PDF・HTML の文字コードと &#147; など）、OCR の呼び出し |
+| `reading_data.R` | 本文の抽出（PDF・HTML の文字コードと &#147; など）。文字のないページは「本文なし」と記録 |
 | `claude_agent.R` | Claude Code の作業フォルダ・依頼文・起動（processx）・結果の形式チェック |
 | `read_results.R` | 案件フォルダの読込 |
 | `validate_results.R` | 条件・根拠・版・FpML の検証 |
@@ -82,10 +86,9 @@ Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_wa
 | `verify_quotes.R` | 引用照合のための正規化、SHA-256 |
 | `fpml_trs.R` | FpML の作成（デモ用）と、FpML のコード変換表（照合でも使う） |
 | `fpml_validate.R` | FpML の構文・スキーマ検証（xml2） |
-| `windows/ocr_windows.ps1` | Windows 標準の OCR（Windows PowerShell 5.1。文字のない PDF ページだけに使う） |
 
 ## 未完了
 
 - FpML の公式XSD での検証、ISDA 定義の名称と FpML のコード（contractualDefinitions 等）の確認
-- Aladdin 用 JSON への変換（仕様の提示後）
+- Aladdin への送信（送信先 URL・メソッド・認証、列挙値の一覧、Aladdin のコード対応、スプレッドの単位、想定元本の項目の提示後）
 - 同じ資料を複数回読ませたときの揺れの測定、正解つき試験資料での正答率の測定

@@ -80,7 +80,7 @@ tree <- c("output/c1_trs/cases/<案件ID>/",
           "  manifest.json            実行の記録（段階ごとの状態・終了コード・エラー）",
           "  r_validation.json        R の検証結果",
           "  source/original.pdf|htm  取得した原資料（そのまま）。acquisition.json に取得元・取得日時・HTTP・SHA-256",
-          "  source/reading_*         読解用データ（ページごとの本文。必要なら OCR）",
+          "  source/reading_*         読解用データ（ページごとの本文。文字のないページは「本文なし」と記録）",
           "  agents/claude/           Claude への依頼文・読解結果（reviewed.json）・FpML 案・実行記録",
           "  logs/run_log.jsonl       段階ごとのログ")
 
@@ -116,16 +116,15 @@ qmd <- c(
   "",
   md_table(tibble::tribble(
     ~担当, ~処理,
-    "R（R/c1_trs_terms/）", "資料の取得と記録、読解用データ（本文。文字のないページは OCR）、Claude Code の起動（processx・タイムアウト）、JSON・FpML の保存、検証、表示",
-    "Claude Code（claude -p）", "作業フォルダの原資料（PDF・HTML）と指示書を読み、条件（reviewed.json）・FpML・要確認事項を作る（元の URL から再取得しない）",
-    "PowerShell（R/c1_trs_terms/windows/）", "Windows 標準の OCR の補助だけ（文字のない PDF ページ）"
+    "R（R/c1_trs_terms/）", "資料の取得と記録、読解用データ（本文。文字のないページは「本文なし」と記録）、Claude Code の起動（processx・タイムアウト）、JSON・FpML の保存、検証、表示",
+    "Claude Code（claude -p）", "作業フォルダの原資料（PDF・HTML）と指示書を読み、条件（reviewed.json）・FpML・要確認事項を作る（元の URL から再取得しない）"
   )),
   "",
   "## 2. 処理の流れ",
   "",
   "1. **入力**：RStudio で `source(\"scripts/run_c1_document.R\", encoding = \"UTF-8\")` を実行し、「資料のURL（またはファイルのパス）を貼ってください:」に貼る。Box の資料は Box Drive の同期フォルダのパスを貼る",
   "2. **資料の取得**：原資料をそのまま保存し、取得元・取得日時・HTTP・Content-Type・SHA-256 を記録。形式は中身・Content-Type・拡張子で判定。取得できなければ **取得失敗** で止まる（アクセス制限は回避しない）",
-  "3. **読解用データ**：PDF はページごとの本文、文字のないページは Windows 標準の OCR、HTML は本文（全体を1ページ）。R の引用照合に使う",
+  "3. **読解用データ**：PDF はページごとの本文、HTML は本文（全体を1ページ）。R の引用照合に使う。文字のないページは「本文なし」と記録する（Claude は原資料を画像として読むが、そのページの引用は照合できない）",
   "4. **Claude**：原資料そのもの（PDF・HTML）を読み、全項目の値・根拠・未確定事項と FpML を作る",
   "5. **保存**：`result/conditions.json`（条件・資料の記録・要確認事項）と FpML",
   "6. **R の検証**：すべて合格し、必須項目がそろい、公式 XSD にも適合したときだけ **検証済み**（`fpml_final.xml`）。それ以外は **要確認**（`fpml_DRAFT.xml`）",
@@ -138,7 +137,7 @@ qmd <- c(
     "要確認", "成果物はあるが、不合格・要確認・未検証・未確定・XSD 未検証のどれかがある。FpML は fpml_DRAFT.xml",
     "デモ", "Claude がモック。検証に合格しても検証済みにしない",
     "取得失敗", "原資料を取得できない（URL がない、アクセス拒否、ファイルがないなど）。Claude には進まない",
-    "読解用データ作成失敗", "本文を抜き出せず、OCR でも読めない",
+    "読解用データ作成失敗", "原資料から本文を抜き出す処理が失敗した",
     "読解失敗", "Claude の失敗（終了コード）・タイムアウト・原資料を読めなかった。途中の結果は使わない",
     "回答形式不正", "Claude の結果の形式が不正（reviewed.json の項目不足、fpml.xml がないなど）"
   )),
@@ -184,7 +183,7 @@ qmd <- c(
   "## 8. いまの制約",
   "",
   "- **FpML の公式 XSD**：未設定（`CURIE_FPML_XSD`）。設定するまで「検証済み」にならない",
-  "- **Aladdin 用 JSON**：仕様の提示前のため作らない",
+  "- **Aladdin**：送信用 JSON は下書きだけ作る（`aladdin_request_DRAFT.json`。未確定の項目は `aladdin_unresolved.json`）。送信先・認証が未提示のため送信しない",
   "- **公開元の制限**：SEC などは名前と連絡先を含む User-Agent が必要（`CURIE_HTTP_USER_AGENT`）。アクセス制限は回避しない",
   "- **PDF を Claude が読む**には poppler（pdftoppm）が必要",
   "",

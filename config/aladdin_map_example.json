@@ -1,0 +1,14 @@
+{
+  "_説明": "Aladdin 送信用 JSON の対応表の見本。値はすべて空（未提示）。Aladdin の資料をもとに埋めたものを別名で保存し、環境変数 CURIE_ALADDIN_MAP にその場所を書く（tmp/.Renviron など）。キーは原文の値の大文字。",
+  "our_party_names": [],
+  "spread_unit": "",
+  "counterparty_codes": { "DEMO SECURITIES CO., LTD.": "" },
+  "asset_ids": { "DEMOJCBI": "" },
+  "index_codes": { "JPY-TONA-OIS COMPOUND": "", "USD-LIBOR-BBA 3M": "" },
+  "calendar_codes": { "JPTO": "", "USNY": "", "GBLO": "" },
+  "accrual_base": { "ACTUAL/365 (FIXED)": "", "ACTUAL/360": "" },
+  "frequency_type": { "QUARTERLY": "", "MONTHLY": "", "SEMIANNUAL": "", "ANNUAL": "" },
+  "adjust_method": { "MODIFIED FOLLOWING": "", "FOLLOWING": "", "PRECEDING": "" },
+  "swap_type": { "RETURN_LEG": "", "FUNDING_LEG": "" },
+  "compounding_flag": { "COMPOUNDING": "", "AVERAGING": "", "NONE": "" }
+}

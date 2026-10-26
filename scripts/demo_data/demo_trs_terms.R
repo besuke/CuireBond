@@ -156,7 +156,7 @@ write_demo_trs_html_c1 <- function(dir) {
   invisible(pdf_path)
 }
 
-# 文字を持たない（画像だけの）PDF：OCR のテスト用。デモPDFのページを画像にし、PDF に印刷する
+# 文字を持たない（画像だけの）PDF：本文のないページのテスト用。デモPDFのページを画像にし、PDF に印刷する
 write_demo_trs_scanned_pdf_c1 <- function(dir, pdf) {
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   pngs <- pdftools::pdf_convert(pdf, format = "png", dpi = 200,

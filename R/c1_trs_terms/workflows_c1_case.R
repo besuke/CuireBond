@@ -1,6 +1,6 @@
 # c1：TRS 確認書1件の処理（R → Claude Code → R）。
 #   1. 取得：原資料を保存し、取得元・取得日時・HTTP・形式・文字コード・SHA-256 を記録（acquire_document.R）
-#   2. 読解用データ：ページごとの本文（文字のないページは OCR）。引用の照合に使う（reading_data.R）
+#   2. 読解用データ：ページごとの本文（文字のないページは「本文なし」と記録）。引用の照合に使う（reading_data.R）
 #   3. Claude Code：作業フォルダの原資料を読み、条件と FpML を作る（claude_agent.R）
 #   4. 保存：result/conditions.json と FpML
 #   5. 検証：条件・根拠・版・FpML（XML構文／公式XSD／条件との整合）。検証済みなら fpml_final.xml、それ以外は fpml_DRAFT.xml
@@ -43,7 +43,8 @@ workflows_c1_case <- function(source, claude_mode = c("api", "demo"),
                               claude_demo_dir = NULL, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""),
                               instruction_path = file.path("docs", "c1_trs_extraction_instructions.md"),
                               timeout_sec = as.numeric(Sys.getenv("CURIE_CLAUDE_TIMEOUT_SEC", "1800")),
-                              claude_cmd = claude_command_c1(), claude_args = NULL, fetcher = .curl_fetch_c1) {
+                              claude_cmd = claude_command_c1(), claude_args = NULL, fetcher = .curl_fetch_c1,
+                              aladdin_map = read_aladdin_map_c1()) {
   claude_mode <- match.arg(claude_mode)
   if (is.null(case_id)) {
     stem <- gsub("[^A-Za-z0-9_-]", "_", tools::file_path_sans_ext(basename(utils::URLdecode(sub("[?#].*$", "", source)))))
@@ -73,11 +74,9 @@ workflows_c1_case <- function(source, claude_mode = c("api", "demo"),
     manifest$stages$document <- "取得済み"
 
     # 2. 読解用データ ------------------------------------------------------------------------
-    pages <- tryCatch(document_pages_c1(acq$path, acq$format$kind, file.path(case_dir, "source", "reading")),
+    # 文字のないページ（スキャン画像など）があっても止めない（Claude は原資料を画像として読める。引用は照合できない）
+    pages <- tryCatch(document_pages_c1(acq$path, acq$format$kind),
                       error = function(e) .stage_fail_c1("読解用データ作成失敗", paste0("読解用データを作れません: ", conditionMessage(e))))
-    if (!sum(nchar(gsub("\\s", "", pages$text[pages$method != "ocr_failed"])))) {
-      .stage_fail_c1("読解用データ作成失敗", "本文を抜き出せず、OCR でも文字を読めませんでした")
-    }
     jsonlite::write_json(pages, file.path(case_dir, "source", "reading_pages.json"), pretty = TRUE)
     methods <- paste(purrr::imap_chr(table(pages$method), \(n, m) paste0(m, " ", n, " ページ")), collapse = "、")
     manifest$reading_data <- list(pages = nrow(pages), methods = methods, text_chars = sum(pages$chars))
@@ -146,8 +145,11 @@ workflows_c1_case <- function(source, claude_mode = c("api", "demo"),
                             validated_at = .now_c1(), fpml = if (is.na(fpml_out)) NULL else basename(fpml_out),
                             verdicts = validation$verdicts, checks = validation$checks),
                        file.path(case_dir, "r_validation.json"), auto_unbox = TRUE, pretty = TRUE, null = "null")
-  step("終了", paste0("状態：", validation$state))
-  list(state = validation$state, case_dir = results$case_dir, results = results, validation = validation, fpml = fpml_out)
+  # Aladdin 送信用 JSON の下書き（送信はしない。送信先・認証が未提示）
+  out <- list(state = validation$state, case_dir = results$case_dir, results = results, validation = validation, fpml = fpml_out)
+  out$aladdin <- if (is.null(failure)) write_aladdin_draft_c1(out, aladdin_map) else NULL
+  step("終了", if (is.null(failure)) paste0("保存しました：", normalizePath(case_dir, winslash = "/")) else failure$kind)
+  out
 }
 
 # コンソール表示用：主要項目の取得できたもの／できなかったもの

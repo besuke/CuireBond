@@ -1,9 +1,9 @@
-# c1：TRS 確認書1件の処理（Claude の読解・FpML 作成 → R の検証）
+# c1：TRS 確認書1件の処理（R → Claude Code → R）。コンソールには資料から抜き出した条件を表示する
 # CURIEプロジェクトの最上位フォルダで実行する。
 #
 #   source("scripts/run_c1_document.R", encoding = "UTF-8")      # RStudio：資料のURLかファイルのパスを貼る
 #   c1_args <- c("--claude=demo", "--claude-demo-dir=<フォルダ>"); source(...)   # RStudio でモードを指定する
-#   Rscript scripts/run_c1_document.R <URLまたはファイルのパス> [--claude=api|demo] [--claude-demo-dir=<フォルダ>] [--show-fpml]
+#   Rscript scripts/run_c1_document.R <URLまたはファイルのパス> [--claude=api|demo] [--claude-demo-dir=<フォルダ>]
 #
 # 入力：公開 PDF・HTML の URL、ローカルの PDF・HTML（Box Drive の同期フォルダのファイルも可。形式は自動で判定する）。
 # 成果物：result/conditions.json と FpML（検証済みなら fpml_final.xml、それ以外は fpml_DRAFT.xml）。
@@ -30,51 +30,28 @@ cat("\nClaude：", claude_mode, if (claude_mode == "demo") "（デモ：用意�
 
 case <- workflows_c1_case(source_arg, claude_mode, claude_demo_dir = opt("claude-demo-dir"))
 
-cat("\n状態：", case$state, "\n案件フォルダ：", case$case_dir, "\n", sep = "")
-if (!is.null(case$results$manifest$stages)) {
-  st <- case$results$manifest$stages
-  cat("段階：資料 ", st$document, "／読解用データ ", st$reading_data %||% "—", "／Claude ", st$claude,
-      "／成果物 ", st$outputs, "\n", sep = "")
-  acq <- case$results$manifest$acquisition
-  if (!is.null(acq)) {
-    cat("取得：", acq$source_type, "、", acq$format$kind, "、HTTP ", acq$http_status %||% "—",
-        if (!is.null(acq$encoding)) paste0("、文字コード ", acq$encoding), "、", acq$retrieved_at,
-        "、SHA-256 ", substr(acq$sha256, 1, 12), "…\n", sep = "")
-  }
-}
-if (!is.null(case$results$failure)) cat("理由：", case$results$failure$message, "\n", sep = "")
-json <- case$results$files[["json"]] %||% NA_character_
-if (!is.na(json)) cat("JSON：", json, "\n", sep = "")
-if (!is.null(case$fpml) && !is.na(case$fpml)) {
-  cat("FpML：", case$fpml, if (grepl("DRAFT", case$fpml)) "（ドラフト：未検証または条件不足）" else "（最終版）", "\n", sep = "")
-}
-if (length(case$validation$verdicts)) {
-  cat("判定：", paste(names(case$validation$verdicts), unlist(case$validation$verdicts), sep = " ", collapse = "／"), "\n", sep = "")
-}
+# コンソールには、資料（PDF・HTML）から抜き出した条件だけを出す。検証の詳細は r_validation.json に残す
+acq <- case$results$manifest$acquisition
+cat("\n資料：", acq$name %||% source_arg, if (!is.null(acq)) paste0("（", toupper(acq$format$kind), "、", acq$source_type, "）"), "\n", sep = "")
+cat("案件フォルダ：", case$case_dir, "\n", sep = "")
+if (!is.null(case$results$failure)) cat("止まった理由：", case$results$failure$kind, "：", case$results$failure$message, "\n", sep = "")
 
-if (!is.null(case$validation)) {
-  checks <- case$validation$checks
-  cat("\n■ 検証結果（合格 ", sum(checks$結果 == "合格"), "／不合格 ", sum(checks$結果 == "不合格"),
-      "／その他 ", sum(!checks$結果 %in% c("合格", "不合格")), "）\n", sep = "")
-  print(checks, n = Inf, width = Inf)
-}
-
-terms <- summarize_c1_case(case)
-if (!is.null(terms)) {
-  trs <- dplyr::filter(terms, 項目 == trs_field_dictionary_c1()$label_ja[1])
-  cat("\n■ トータル・リターン・スワップか：",
-      if (nrow(trs) && identical(trs$値[1], "TOTAL_RETURN_SWAP")) "はい" else if (nrow(trs) && nzchar(trs$値[1])) "いいえ" else "判定できない",
-      if (nrow(trs) && nzchar(trs$ページ[1])) paste0("（根拠 p.", trs$ページ[1], "）"), "\n", sep = "")
-  got <- dplyr::filter(terms, 結果 == "取得できた")
-  missing <- dplyr::filter(terms, 結果 == "取得できなかった")
-  cat("\n■ 取得できたもの（", nrow(got), "項目）\n", sep = "")
-  print(dplyr::select(got, 区分, 項目, レッグ, 番号, 値, ページ, 引用の確認, 確認状態), n = Inf, width = Inf)
-  cat("\n■ 取得できなかったもの（", nrow(missing), "項目）\n", sep = "")
-  print(dplyr::select(missing, 区分, 項目, 確認状態, 理由), n = Inf, width = Inf)
+cond <- case$validation$conditions
+if (!is.null(cond)) {
+  got <- cond |>
+    dplyr::filter(.data$value_status == "stated", nzchar(.data$value)) |>
+    dplyr::transmute(区分 = .data$section, 項目 = sub("（.*）$", "", .data$label_ja), レッグ = .data$leg_id, 番号 = .data$seq,
+                     値 = .data$value, 単位 = .data$unit, ページ = .data$source_page,
+                     原文の引用 = dplyr::if_else(nchar(.data$quote) > 60, paste0(substr(.data$quote, 1, 60), "…"), .data$quote))
+  cat("\n■ 資料から抜き出した条件（", nrow(got), "項目）\n", sep = "")
+  print(got, n = Inf, width = Inf)
+  rest <- dplyr::filter(cond, !(.data$value_status == "stated" & nzchar(.data$value)))
+  cat("\n資料に記載がなかった・未確定の項目：", nrow(rest), "項目（", case$results$files[["json"]], " に理由つきで記録）\n", sep = "")
 
   fpml <- case$fpml %||% NA_character_
-  if (!is.na(fpml)) {
-    show <- "--show-fpml" %in% args || (interactive() && toupper(trimws(readline("\nFpMLも表示しますか（Y/n）: "))) %in% c("", "Y", "YES"))
-    if (show) { cat("\n■ FpML：", normalizePath(fpml, winslash = "/"), "\n", sep = ""); writeLines(readLines(fpml, encoding = "UTF-8", warn = FALSE)) }
+  if (!is.na(fpml)) cat("\nXML を保存しました：", normalizePath(fpml, winslash = "/"), "\n", sep = "")
+  if (!is.null(case$aladdin)) {
+    cat("Aladdin 送信用 JSON（下書き・未送信）を保存しました：", normalizePath(case$aladdin$path, winslash = "/"),
+        "（未確定 ", nrow(case$aladdin$unresolved), " 項目。理由は aladdin_unresolved.json）\n", sep = "")
   }
 }
