@@ -80,7 +80,10 @@ Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_wa
 
 ```r
 source("R/load_Curie.R", encoding = "UTF-8")
-config <- c1_inbox_config(stable_sec = 10)          # 監視フォルダーは Curie_C1_INBOX_ROOT（tmp/.Renviron）。root = で直接も指定可
+config <- c1_inbox_config(
+  root       = "C:/AnalyticFin/temp/TRS_curie_PDF",             # 監視フォルダー（省くと Curie_C1_INBOX_ROOT）
+  processed  = "C:/AnalyticFin/temp/TRS_curie_PDF/processed",   # 完了した案件の保存先（省くと root の下の processed）
+  stable_sec = 10)
 scan_c1_inbox_once(config, claude_mode = "api")     # 起動メッセージ（監視フォルダー・保存先）を出し、1回スキャンして処理する
 read_c1_history(config)                             # 処理履歴
 start_c1_inbox_watch(config, interval_sec = 60)     # 定期監視（同じ関数を別の R プロセスで一定間隔に呼ぶ）

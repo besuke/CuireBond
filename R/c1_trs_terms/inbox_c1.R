@@ -189,7 +189,8 @@ read_c1_history <- function(config) {
   # 種類が一目で分かる印（絵文字は ASCII 外でログ収集時に文字化けしうるので、ASCII の記号にする）
   title <- c(detected = "[+]  PDF detected.", started = "[>]  Processing started.", completed = "[OK] Processing completed.",
              review = "[!]  Saved for review.", duplicate = "[=]  Duplicate skipped.", failed = "[X]  Processing failed.")[[ev$event]]
-  say_Curie(ev$time, " ", title, " ", ev$file, if (nzchar(ev$reason %||% "")) paste0(" (", ev$reason, ")"))
+  # 出来事ごとに空行を入れて区切る
+  say_Curie("\n", ev$time, " ", title, " ", ev$file, if (nzchar(ev$reason %||% "")) paste0(" (", ev$reason, ")"))
   if (length(ev$summary)) {
     s <- unlist(ev$summary)
     say_Curie(paste0(sprintf("%-13s", paste0(names(s), ":")), s, collapse = "\n"))

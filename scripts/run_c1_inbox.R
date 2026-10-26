@@ -14,8 +14,12 @@
 
 source("R/load_Curie.R", encoding = "UTF-8")
 
-# 1. 設定（root を省くと Curie_C1_INBOX_ROOT を使う）
-config <- c1_inbox_config(stable_sec = 10)          # サイズと更新時刻が 10 秒変わらなければコピー完了とみなす
+# 1. 設定：監視フォルダーと保存先を明示する（root を省くと Curie_C1_INBOX_ROOT を使い、processed はその下）
+config <- c1_inbox_config(
+  root       = "C:/AnalyticFin/temp/TRS_curie_PDF",             # 監視フォルダー（直下の PDF を処理する）
+  processed  = "C:/AnalyticFin/temp/TRS_curie_PDF/processed",   # 完了した案件の保存先（案件ごとのフォルダー）
+  stable_sec = 10                                               # サイズと更新時刻が 10 秒変わらなければコピー完了とみなす
+)
 
 # 2. 1回スキャンして処理する（起動メッセージと監視フォルダーを表示し、直下の PDF を purrr::walk() で1件ずつ処理）
 scan <- scan_c1_inbox_once(config, claude_mode = "api")
