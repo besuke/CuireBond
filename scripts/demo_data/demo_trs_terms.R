@@ -62,7 +62,7 @@ write_demo_trs_pdf_c1 <- function(dir) {
   status <- withr::with_dir(dir, system2("quarto", c("render", basename(qmd), "--to", "typst", "--quiet"),
                                          stdout = TRUE, stderr = TRUE))
   pdf <- file.path(dir, "DEMO_TRS_confirmation.pdf")
-  if (!file.exists(pdf)) stop("デモPDFを作れませんでした: ", paste(status, collapse = "\n"), call. = FALSE)
+  if (!file.exists(pdf)) stop("Cannot create the demo PDF: ", paste(status, collapse = "\n"), call. = FALSE)
   unlink(qmd)
   pdf
 }
@@ -146,15 +146,15 @@ write_demo_trs_html_c1 <- function(dir) {
 .html_to_pdf_demo_c1 <- function(html_path, pdf_path, timeout_sec = 120) {
   browser <- purrr::keep(c(Sys.getenv("Curie_CHROME", ""), "C:/Program Files/Google/Chrome/Application/chrome.exe",
                            "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"), \(p) nzchar(p) && file.exists(p))
-  if (!length(browser)) stop("HTMLをPDFへ変換するブラウザ（Chrome／Edge）が見つかりません。Curie_CHROME で指定してください。", call. = FALSE)
+  if (!length(browser)) stop("No browser (Chrome/Edge) found to convert HTML to PDF. Set Curie_CHROME.", call. = FALSE)
   profile <- tempfile("curie_browser_")
   on.exit(unlink(profile, recursive = TRUE), add = TRUE)
   res <- processx::run(browser[[1]], c("--headless=new", "--disable-gpu", "--no-pdf-header-footer", paste0("--user-data-dir=", profile),
                                        paste0("--print-to-pdf=", normalizePath(pdf_path, winslash = "/", mustWork = FALSE)),
                                        paste0("file:///", normalizePath(html_path, winslash = "/"))),
                        timeout = timeout_sec, error_on_status = FALSE, cleanup_tree = TRUE)
-  if (isTRUE(res$timeout)) stop("HTMLをPDFへ変換する途中でブラウザが止まりました（", timeout_sec, " 秒）: ", html_path, call. = FALSE)
-  if (!file.exists(pdf_path)) stop("HTMLをPDFへ変換できませんでした: ", html_path, call. = FALSE)
+  if (isTRUE(res$timeout)) stop("The browser stopped while converting HTML to PDF (", timeout_sec, " s): ", html_path, call. = FALSE)
+  if (!file.exists(pdf_path)) stop("Cannot convert HTML to PDF: ", html_path, call. = FALSE)
   invisible(pdf_path)
 }
 

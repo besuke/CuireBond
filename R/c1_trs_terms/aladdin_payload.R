@@ -13,16 +13,55 @@
 # 対応表（aladdin_map）：config/aladdin_map_example.json の形（JSON）。埋めたものは tmp/aladdin_map.json など Git 管理対象外に置き、
 # 環境変数 Curie_ALADDIN_MAP（tmp/.Renviron）でその場所を指定する
 
-# 対応表を読む（なければ空。すべての Aladdin のコード・列挙値・向きが未確定になる）
-read_aladdin_map_c1 <- function(path = Sys.getenv("Curie_ALADDIN_MAP", "")) {
-  if (!nzchar(path) || !file.exists(path)) return(list())
-  jsonlite::fromJSON(path, simplifyVector = FALSE)
+# 対応表を読む（なければ空。すべての Aladdin のコード・列挙値・向きが未確定になる）。
+# 自社の名前は、対応表の our_party_names に加えて、環境変数 Curie_OUR_PARTY_NAMES（; 区切り。tmp/.Renviron）でも指定できる
+read_aladdin_map_c1 <- function(path = Sys.getenv("Curie_ALADDIN_MAP", ""), our_party_names = Sys.getenv("Curie_OUR_PARTY_NAMES", "")) {
+  map <- if (nzchar(path) && file.exists(path)) jsonlite::fromJSON(path, simplifyVector = FALSE) else list()
+  extra <- stringr::str_squish(strsplit(our_party_names, ";", fixed = TRUE)[[1]])
+  ours <- unique(c(unlist(map$our_party_names), extra[nzchar(extra)]))
+  if (length(ours)) map$our_party_names <- as.list(ours)
+  map
 }
 
 # 条件の表 → 値を引く関数（記載あり・確認済みの値だけ）
 .condition_getter_c1 <- function(conditions) {
   ok <- dplyr::filter(conditions, .data$value_status == "stated", .data$review_status == "confirmed", nzchar(.data$value))
   function(id) ok |> dplyr::filter(.data$item_id == id) |> dplyr::pull("value") |> dplyr::first(default = NA_character_)
+}
+
+# 自社の向き：自社（対応表の our_party_names）がトータル・リターンの受取者なら "receive_return"、支払者なら "pay_return"、
+# 決められなければ NA（推測しない）
+.our_side_c1 <- function(g, aladdin_map) {
+  ours <- toupper(unlist(aladdin_map$our_party_names %||% list()))
+  receiver <- toupper(g("trade.total_return_receiver") %|% ""); payer <- toupper(g("trade.total_return_payer") %|% "")
+  if (!length(ours)) NA_character_ else if (receiver %in% ours) "receive_return" else if (payer %in% ours) "pay_return" else NA_character_
+}
+
+# コンソール表示用の取引の要約（自社から見た Pay／Receive。値は抽出結果と対応表から作り、不明は "Unknown"）
+deal_summary_c1 <- function(conditions, aladdin_map = read_aladdin_map_c1()) {
+  g <- .condition_getter_c1(conditions)
+  or_unknown <- function(x) if (length(x) && !is.na(x) && nzchar(x)) x else "Unknown"
+  # QUARTERLY → Quarterly、SEMI_ANNUAL → Semiannual
+  freq <- function(x) if (is.na(x)) NA_character_ else stringr::str_to_title(gsub("[^A-Za-z]", "", x))
+  side <- .our_side_c1(g, aladdin_map)
+
+  idx <- g("funding.floating_rate_index")
+  spread <- suppressWarnings(as.numeric(g("funding.spread_bp")))
+  rate <- if (is.na(idx)) NA_character_ else paste0(
+    idx, if (!is.na(g("funding.index_tenor"))) paste0(" ", g("funding.index_tenor")),
+    if (is.na(spread)) " + Unknown" else paste0(if (spread < 0) " - " else " + ", format(abs(spread)), " bp"))
+  funding <- paste(or_unknown(rate), or_unknown(freq(g("funding.payment_frequency"))), sep = " / ")
+
+  return_type <- c(TOTAL = "Total Return", PRICE = "Price Return")[toupper(g("return.return_type") %|% "")] |> unname()
+  ret <- paste(or_unknown(g("return.underlyer_name")), or_unknown(return_type),
+               or_unknown(freq(dplyr::coalesce(g("return.valuation_frequency"), g("funding.payment_frequency")))), sep = " / ")
+
+  c(CP = or_unknown(switch(side %|% "none", receive_return = g("trade.total_return_payer"),
+                           pay_return = g("trade.total_return_receiver"), NA_character_)),
+    Start = or_unknown(g("trade.effective_date")),
+    End = or_unknown(g("trade.termination_date")),
+    `Pay leg` = switch(side %|% "none", receive_return = funding, pay_return = ret, "Unknown"),
+    `Receive leg` = switch(side %|% "none", receive_return = ret, pay_return = funding, "Unknown"))
 }
 
 build_aladdin_trs_payload_c1 <- function(conditions, aladdin_map = read_aladdin_map_c1()) {
@@ -49,8 +88,7 @@ build_aladdin_trs_payload_c1 <- function(conditions, aladdin_map = read_aladdin_
 
   # どちらのレッグを受け取るか（自社＝トータル・リターンの受取者なら、リターン・レッグが recLeg）
   ours <- toupper(unlist(aladdin_map$our_party_names %||% list()))
-  receiver <- toupper(g("trade.total_return_receiver") %|% ""); payer <- toupper(g("trade.total_return_payer") %|% "")
-  side <- if (!length(ours)) NA_character_ else if (receiver %in% ours) "receive_return" else if (payer %in% ours) "pay_return" else NA_character_
+  side <- .our_side_c1(g, aladdin_map)
   if (is.na(side)) {
     miss("swapInfo.payLeg／recLeg", "trade.total_return_receiver", g("trade.total_return_receiver"),
          if (!length(ours)) "自社（ファンド）の名前が対応表（our_party_names）にないため、payLeg と recLeg の向きを決められない"
@@ -130,7 +168,7 @@ build_aladdin_trs_payload_c1 <- function(conditions, aladdin_map = read_aladdin_
 }
 
 # 送信先の記録（config/aladdin_endpoint_example.json。送信には使わない。認証情報は含めない）
-read_aladdin_endpoint_c1 <- function(path = file.path("config", "aladdin_endpoint_example.json")) {
+read_aladdin_endpoint_c1 <- function(path = file.path(Sys.getenv("Curie_ROOT", "."), "config", "aladdin_endpoint_example.json")) {
   if (!file.exists(path)) return(list(url = "未設定"))
   x <- jsonlite::fromJSON(path, simplifyVector = FALSE)
   x[setdiff(names(x), "_説明")]

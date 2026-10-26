@@ -6,7 +6,7 @@
 #   C. 取得失敗（資料がない）
 # Curieプロジェクトの最上位フォルダで実行する：Rscript scripts/make_c1_walkthrough.R
 
-if (!file.exists("Curie.Rproj")) stop("Curieプロジェクトの最上位フォルダで実行してください。")
+if (!file.exists("Curie.Rproj")) stop("Run this script from the top folder of the Curie project.")
 source("R/load_Curie.R", encoding = "UTF-8")
 source("scripts/demo_data/demo_trs_terms.R", encoding = "UTF-8")
 suppressPackageStartupMessages(library(dplyr))
@@ -25,7 +25,9 @@ rscript <- file.path(R.home("bin"), "Rscript.exe")
 run_case <- function(src, demo_dir) {
   out <- system2(rscript, c("scripts/run_c1_document.R", shQuote(src, type = "cmd"), "--claude=demo",
                             paste0("--claude-demo-dir=", demo_dir)), stdout = TRUE, stderr = TRUE)
-  dir <- sub("^案件フォルダ：", "", grep("^案件フォルダ：", out, value = TRUE)[1])
+  # 案件フォルダ：ログ「[c1] Finished」の次の行（dir: <案件フォルダ>）から求める
+  dir <- sub("^dir: ", "", out[grep("\\[c1\\] Finished", out)[1] + 1L])
+  if (is.na(dir)) stop("The run stopped:\n", paste(tail(out, 15), collapse = "\n"))
   list(console = out, dir = dir, results = read_c1_case_results(dir),
        r = jsonlite::fromJSON(file.path(dir, "r_validation.json")))
 }
@@ -51,7 +53,7 @@ md_table <- function(df) {
 }
 # 画面出力のうち、処理の段階を示す行（[c1] のログ）と結果の行
 log_lines <- function(case) {
-  x <- grep("\\[c1\\]|^状態：|^段階：|^取得：|^判定：|^JSON：|^FpML：|^■ トータル", case$console, value = TRUE)
+  x <- grep("\\[c1\\]|^(file|dir): |^Payload draft saved|^Processing stopped|^(CP|Start|End|Pay leg|Receive leg):", case$console, value = TRUE)
   # 手元のフォルダの場所は出さない（Windows は大文字小文字を区別しないので、区別せずに除く）
   x <- gsub("C:\\\\AnalyticFin\\\\Projects\\\\Curie\\\\|C:/AnalyticFin/Projects/Curie/", "", x, ignore.case = TRUE)
   substr(x, 1, 160)
@@ -198,6 +200,9 @@ qmd_path <- file.path("docs", "c1_walkthrough.qmd")
 writeLines(qmd, qmd_path, useBytes = TRUE)
 status <- system2("quarto", c("render", qmd_path, "--to", "typst"), stdout = TRUE, stderr = TRUE)
 pdf <- file.path("docs", "c1_walkthrough.pdf")
-if (!file.exists(pdf)) stop("PDF を作れませんでした:\n", paste(status, collapse = "\n"), call. = FALSE)
-cat("作成：", pdf, "（", pdftools::pdf_info(pdf)$pages, " ページ）\n", sep = "")
-purrr::iwalk(cases, \(x, k) cat(k, "：", x$r$state, "\n", sep = ""))
+if (!file.exists(pdf)) stop("Cannot create the PDF:\n", paste(status, collapse = "\n"), call. = FALSE)
+say_path_Curie(paste0("Walkthrough PDF created (", pdftools::pdf_info(pdf)$pages, " pages)."), pdf, "file")
+# 案件の状態（r_validation.json に残す値）は英語で表示する
+state_en <- function(s) dplyr::case_when(startsWith(s, "要確認") ~ "needs review", startsWith(s, "検証済み") ~ "verified",
+                                          startsWith(s, "デモ") ~ "demo", .default = .failure_kind_en_c1(s))
+purrr::iwalk(cases, \(x, k) say_Curie("Case ", k, ": ", state_en(x$r$state), " (details in r_validation.json)"))

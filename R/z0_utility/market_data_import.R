@@ -10,7 +10,7 @@
 
 .require_columns_Curie <- function(x, columns, label) {
   missing <- setdiff(columns, names(x))
-  if (length(missing)) stop(label, "に必須列がありません: ", paste(missing, collapse = ", "), call. = FALSE)
+  if (length(missing)) stop(label, ": missing required columns: ", paste(missing, collapse = ", "), call. = FALSE)
   x
 }
 
@@ -19,7 +19,7 @@
 import_fx_spot_Curie <- function(path, settings = text_import_settings_Curie()) {
   read_text_table_Curie(path, settings) |>
     .require_columns_Curie(c("marketdate", "currency_pair", "base_currency", "quote_currency",
-                             "fx_spot", "spot_date"), "FXスポット") |>
+                             "fx_spot", "spot_date"), "FX spot") |>
     .ensure_quote_time_Curie() |>
     dplyr::mutate(
       marketdate = parse_date_Curie(.data$marketdate, "marketdate"),
@@ -38,7 +38,7 @@ import_fx_spot_Curie <- function(path, settings = text_import_settings_Curie()) 
 import_ccs_basis_Curie <- function(path, settings = text_import_settings_Curie()) {
   read_text_table_Curie(path, settings) |>
     .require_columns_Curie(c("marketdate", "currency_pair", "currency", "maturity_date", "basis_bp",
-                             "quote_source", .basis_term_columns_Curie), "通貨ベーシス") |>
+                             "quote_source", .basis_term_columns_Curie), "CCS basis") |>
     .ensure_quote_time_Curie() |>
     dplyr::mutate(
       marketdate = parse_date_Curie(.data$marketdate, "marketdate"),
@@ -58,7 +58,7 @@ import_ccs_basis_Curie <- function(path, settings = text_import_settings_Curie()
 
 import_jgb_file_Curie <- function(path, settings = text_import_settings_Curie()) {
   read_text_table_Curie(path, settings) |>
-    .require_columns_Curie(.jgb_columns_Curie, "JGB時価ファイル") |>
+    .require_columns_Curie(.jgb_columns_Curie, "JGB price file") |>
     .ensure_quote_time_Curie() |>
     dplyr::mutate(
       marketdate = parse_date_Curie(.data$marketdate, "marketdate"),

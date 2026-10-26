@@ -5,7 +5,7 @@
 #   検証：引用の改ざん、記載ありなのに引用なし、FpML の値の違い・部分一致・別レッグの値、公式XSD 適合時の最終版
 # Curieプロジェクトの最上位フォルダで実行する。データはすべて架空（scripts/demo_data/demo_trs_terms.R）。
 
-if (!file.exists("Curie.Rproj")) stop("Curieプロジェクトの最上位フォルダで実行してください。")
+if (!file.exists("Curie.Rproj")) stop("Run this script from the top folder of the Curie project.")
 source("R/load_Curie.R", encoding = "UTF-8")
 source("scripts/demo_data/demo_trs_terms.R", encoding = "UTF-8")
 suppressPackageStartupMessages(library(dplyr))
@@ -60,7 +60,7 @@ claude_unreadable <- file.path(fixtures, "claude_unreadable"); dir.create(claude
 writeLines("読めなかった：document.pdf のページを表示できない", file.path(claude_unreadable, "review_items.md"), useBytes = TRUE)
 claude_bad <- file.path(fixtures, "claude_bad"); dir.create(claude_bad)
 writeLines("{\"fields\": [{\"value\": \"x\"}]}", file.path(claude_bad, "reviewed.json"))
-file.copy(file.path(claude_ok, c("fpml.xml", "review_items.md")), claude_bad)
+invisible(file.copy(file.path(claude_ok, c("fpml.xml", "review_items.md")), claude_bad))
 
 # ---- 入力資料 ---------------------------------------------------------------------------------
 inputs <- file.path(root, "inputs")
@@ -99,43 +99,41 @@ fail_cmd <- list(cmd = rscript, args = c("-e", "quit(status = 1)"))
 slow_cmd <- list(cmd = rscript, args = c("-e", "Sys.sleep(60)"))
 cases <- tibble::tribble(
   ~name,                         ~src,                                      ~mode,  ~demo_dir,            ~run,     ~xsd,     ~expect,
-  "成功（ローカルPDF）",         pdf,                                       "demo", claude_ok,            NULL,     "",       "要確認（公式XSD",
-  "ローカルHTML",                html,                                      "demo", claude_html,          NULL,     "",       "要確認（公式XSD",
-  "画像だけのPDF（本文なし）",        scanned,                                   "demo", claude_ok,            NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、原文根拠：要確認",
-  "URL 200（PDF）",              "https://mock.example/ok.pdf?utm_source=x", "demo", claude_ok,           NULL,     "",       "要確認（公式XSD",
-  "URL 200（中身は PDF、型は別）", "https://mock.example/mislabel.bin",     "demo", claude_ok,            NULL,     "",       "要確認（公式XSD",
-  "URL 200（HTML・Windows-1252）", "https://mock.example/page.htm",         "demo", claude_html,          NULL,     "",       "要確認（公式XSD",
+  "Local PDF succeeds",         pdf,                                       "demo", claude_ok,            NULL,     "",       "要確認（公式XSD",
+  "Local HTML",                html,                                      "demo", claude_html,          NULL,     "",       "要確認（公式XSD",
+  "Image-only PDF (no text)",        scanned,                                   "demo", claude_ok,            NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、原文根拠：要確認",
+  "URL 200 (PDF)",              "https://mock.example/ok.pdf?utm_source=x", "demo", claude_ok,           NULL,     "",       "要確認（公式XSD",
+  "URL 200 (PDF content, other Content-Type)", "https://mock.example/mislabel.bin",     "demo", claude_ok,            NULL,     "",       "要確認（公式XSD",
+  "URL 200 (HTML, Windows-1252)", "https://mock.example/page.htm",         "demo", claude_html,          NULL,     "",       "要確認（公式XSD",
   "URL 403",                     "https://mock.example/denied.htm",         "demo", claude_ok,            NULL,     "",       "取得失敗",
   "URL 404",                     "https://mock.example/missing.pdf",        "demo", claude_ok,            NULL,     "",       "取得失敗",
-  "ファイルがない",              "nofile.pdf",                              "demo", claude_ok,            NULL,     "",       "取得失敗",
-  "Claude 失敗（終了コード）",   pdf,                                       "api",  NULL,                 fail_cmd, "",       "読解失敗",
-  "Claude タイムアウト",         pdf,                                       "api",  NULL,                 slow_cmd, "",       "読解失敗",
-  "Claude 読めなかった",         pdf,                                       "demo", claude_unreadable,    NULL,     "",       "読解失敗",
-  "Claude 回答形式不正",         pdf,                                       "demo", claude_bad,           NULL,     "",       "回答形式不正",
-  "引用の改ざん",                pdf,                                       "demo", claude_tampered,      NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、原文根拠：不合格",
-  "記載ありなのに引用なし",      pdf,                                       "demo", claude_noquote,       NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、原文根拠：要確認",
-  "FpML の値が違う",             pdf,                                       "demo", claude_fpml_date,     NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：不合格",
-  "FpML の部分一致",             pdf,                                       "demo", claude_fpml_partial,  NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：不合格",
-  "FpML の別レッグの値",         pdf,                                       "demo", claude_fpml_otherleg, NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：未検証",
-  "FpML の参照（dateRelativeTo）", pdf,                                     "demo", claude_fpml_ref,      NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：未検証",
-  "FpML の参照先がない",         pdf,                                       "demo", claude_fpml_badref,   NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：未検証",
-  "XSD 適合（テスト用XSD）",     pdf,                                       "demo", claude_ok,            NULL,     test_xsd, "デモ"
+  "Missing file",              "nofile.pdf",                              "demo", claude_ok,            NULL,     "",       "取得失敗",
+  "Claude fails (exit code)",   pdf,                                       "api",  NULL,                 fail_cmd, "",       "読解失敗",
+  "Claude timeout",         pdf,                                       "api",  NULL,                 slow_cmd, "",       "読解失敗",
+  "Claude could not read",         pdf,                                       "demo", claude_unreadable,    NULL,     "",       "読解失敗",
+  "Claude invalid response format",         pdf,                                       "demo", claude_bad,           NULL,     "",       "回答形式不正",
+  "Tampered quote",                pdf,                                       "demo", claude_tampered,      NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、原文根拠：不合格",
+  "Stated value without quote",      pdf,                                       "demo", claude_noquote,       NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、原文根拠：要確認",
+  "FpML value differs",             pdf,                                       "demo", claude_fpml_date,     NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：不合格",
+  "FpML partial match",             pdf,                                       "demo", claude_fpml_partial,  NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：不合格",
+  "FpML value on the other leg",         pdf,                                       "demo", claude_fpml_otherleg, NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：未検証",
+  "FpML reference (dateRelativeTo)", pdf,                                     "demo", claude_fpml_ref,      NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：未検証",
+  "FpML reference target missing",         pdf,                                       "demo", claude_fpml_badref,   NULL,     "",       "要確認（公式XSD：未実施（XSD未設定）、条件JSONとの整合：未検証",
+  "XSD valid (test XSD)",     pdf,                                       "demo", claude_ok,            NULL,     test_xsd, "デモ"
 )
+# コンソールには PASS／FAIL だけを出すので、処理の進捗（message）は抑える
 results <- purrr::pmap(cases, function(name, src, mode, demo_dir, run, xsd, expect) {
-  cat("\n==== ", name, " ====\n", sep = "")
-  case <- tryCatch(
+  case <- tryCatch(suppressMessages(
     workflows_c1_case(src, mode, case_id = sprintf("mock_%02d", match(name, cases$name)), output_root = file.path(root, "cases"),
                       claude_demo_dir = demo_dir, xsd_path = xsd, fetcher = mock_fetcher, timeout_sec = 3,
-                      claude_cmd = run$cmd %||% NA_character_, claude_args = run$args),
-    error = function(e) list(state = paste("R のエラー:", conditionMessage(e))))
-  tibble::tibble(テスト = name, 状態 = case$state, 期待 = expect, FpML = basename(case$fpml %||% NA_character_),
-                 理由 = substr(case$results$failure$message %||% "", 1, 70),
-                 判定 = if (startsWith(case$state, expect)) "合格" else "不合格")
+                      claude_cmd = run$cmd %||% NA_character_, claude_args = run$args)),
+    error = function(e) list(state = paste("R error:", conditionMessage(e))))
+  tibble::tibble(test = name, pass = startsWith(case$state, expect), state = case$state, expected = expect,
+                 fpml = basename(case$fpml %||% NA_character_), reason = case$results$failure$message %||% "")
 }) |> purrr::list_rbind()
 
 # ---- 個別の確認 ---------------------------------------------------------------------------------
-check <- function(name, ok) tibble::tibble(テスト = name, 状態 = if (isTRUE(ok)) "期待どおり" else "期待と違う", 期待 = "期待どおり",
-                                           FpML = NA_character_, 理由 = "", 判定 = if (isTRUE(ok)) "合格" else "不合格")
+check <- function(name, ok) tibble::tibble(test = name, pass = isTRUE(ok))
 man <- function(i) jsonlite::fromJSON(file.path(root, "cases", sprintf("mock_%02d", i), "manifest.json"))
 reading <- function(i) jsonlite::fromJSON(file.path(root, "cases", sprintf("mock_%02d", i), "source", "reading_pages.json"))
 i_of <- function(name) match(name, cases$name)
@@ -149,54 +147,54 @@ payment_rows <- function(i) {
 # 古い成果物：作業フォルダに前回の reviewed.json を置いたまま失敗させても、使わない
 stale_dir <- file.path(root, "stale"); dir.create(stale_dir)
 writeLines("{\"fields\": []}", file.path(stale_dir, "reviewed.json"))
-stale <- run_claude_c1(stale_dir, list(kind = "html"), cmd = rscript,
-                       args = c("-e", "writeLines('{}', 'reviewed.json'); quit(status = 2)"), timeout_sec = 10)
+stale <- suppressMessages(run_claude_c1(stale_dir, list(kind = "html"), cmd = rscript,
+                       args = c("-e", "writeLines('{}', 'reviewed.json'); quit(status = 2)"), timeout_sec = 10))
 results <- dplyr::bind_rows(results,
-  check("追跡用パラメータを除いて取得元を記録", identical(man(i_of("URL 200（PDF）"))$source, "https://mock.example/ok.pdf")),
-  check("User-Agent を Curie_HTTP_USER_AGENT から付ける", identical(last_ua, Sys.getenv("Curie_HTTP_USER_AGENT", "Curie-c1 (TRS terms reader)")) || nzchar(last_ua)),
-  check("中身と Content-Type の食い違いを記録", nzchar(man(i_of("URL 200（中身は PDF、型は別）"))$acquisition$format$note)),
-  check("HTML の文字コードを記録（Windows-1252）", identical(man(i_of("URL 200（HTML・Windows-1252）"))$acquisition$encoding, "windows-1252")),
-  check("403 の理由に「回避しない」を表示", grepl("HTTP 403.*回避はしません", man(i_of("URL 403"))$failure$message)),
-  check("画像だけのPDF を本文なしとして記録（止めない）", all(reading(i_of("画像だけのPDF（本文なし）"))$method == "no_text")),
-  check("タイムアウトで Claude を止める", isTRUE(man(i_of("Claude タイムアウト"))$claude$timed_out)),
-  check("失敗時に古い・途中の成果物を使わない", stale$state == "failed" && !file.exists(file.path(stale_dir, "reviewed.json"))),
-  check("&#147; を “ として読む", grepl("“Fund”", html_text_c1(local({ p <- tempfile(fileext = ".htm"); writeBin(charToRaw("<html><body>the &#147;Fund&#148;</body></html>"), p); p })))),
-  check("参照をたどって支払カレンダー・営業日調整が合格（たどった参照を記録）", local({
-    x <- payment_rows(i_of("FpML の参照（dateRelativeTo）"))
+  check("Source URL recorded without tracking parameters", identical(man(i_of("URL 200 (PDF)"))$source, "https://mock.example/ok.pdf")),
+  check("User-Agent taken from Curie_HTTP_USER_AGENT", identical(last_ua, Sys.getenv("Curie_HTTP_USER_AGENT", "Curie-c1 (TRS terms reader)")) || nzchar(last_ua)),
+  check("Content/Content-Type mismatch recorded", nzchar(man(i_of("URL 200 (PDF content, other Content-Type)"))$acquisition$format$note)),
+  check("HTML encoding recorded (Windows-1252)", identical(man(i_of("URL 200 (HTML, Windows-1252)"))$acquisition$encoding, "windows-1252")),
+  check("HTTP 403 reason says access restrictions are not bypassed", grepl("HTTP 403.*not bypassed", man(i_of("URL 403"))$failure$message)),
+  check("Image-only PDF recorded as no text (does not stop)", all(reading(i_of("Image-only PDF (no text)"))$method == "no_text")),
+  check("Claude stopped on timeout", isTRUE(man(i_of("Claude timeout"))$claude$timed_out)),
+  check("Stale or partial outputs not used after failure", stale$state == "failed" && !file.exists(file.path(stale_dir, "reviewed.json"))),
+  check("&#147; read as a left double quote", grepl("“Fund”", html_text_c1(local({ p <- tempfile(fileext = ".htm"); writeBin(charToRaw("<html><body>the &#147;Fund&#148;</body></html>"), p); p })))),
+  check("Payment calendar and BDC pass via followed reference (reference recorded)", local({
+    x <- payment_rows(i_of("FpML reference (dateRelativeTo)"))
     nrow(x) == 2L && all(x$結果 == "合格") && all(grepl("returnLegPaymentDates", x$詳細))
   })),
-  check("参照先の id がなければ支払カレンダー・営業日調整は未検証", local({
-    x <- payment_rows(i_of("FpML の参照先がない"))
+  check("Payment calendar and BDC unverified when the reference id is missing", local({
+    x <- payment_rows(i_of("FpML reference target missing"))
     nrow(x) == 2L && all(x$結果 == "未検証")
   })),
   # Aladdin 送信用 JSON（下書き。送信しない）
-  check("Aladdin：対応表なしでは下書きと未確定を保存し、向き（pay/rec）を未確定にする", local({
-    d <- file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")), "result")
+  check("Aladdin: without a mapping, draft and unresolved saved; pay/rec direction unresolved", local({
+    d <- file.path(root, "cases", sprintf("mock_%02d", i_of("Local PDF succeeds")), "result")
     u <- jsonlite::fromJSON(file.path(d, "aladdin_unresolved.json"))
     file.exists(file.path(d, "aladdin_request_DRAFT.json")) && any(grepl("our_party_names", u$unresolved$理由))
   })),
-  check("Aladdin：通常実行の下書きにテスト用コードがなく、空の要求本文は {}、下書き・送信先（環境未確認）・未確定を明示", local({
-    d <- file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")), "result")
+  check("Aladdin: no test codes in draft, empty body is {}, draft/endpoint/unresolved stated", local({
+    d <- file.path(root, "cases", sprintf("mock_%02d", i_of("Local PDF succeeds")), "result")
     draft <- paste(readLines(file.path(d, "aladdin_request_DRAFT.json"), encoding = "UTF-8"), collapse = "")
     u <- jsonlite::fromJSON(file.path(d, "aladdin_unresolved.json"))
     !grepl("TEST", draft) && identical(trimws(draft), "{}") && startsWith(u$status, "下書き（未送信）") &&
       grepl("totalReturnSwapSecurity", u$endpoint$url) && grepl("未確認", u$endpoint$environment) && nrow(u$unresolved) > 0
   })),
-  check("Aladdin：スプレッド（原文 0.35% → 35 bp）を単位どおりに換算して記録（bp 35／decimal 0.0035／percent 0.35）", local({
-    cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")))))$conditions
+  check("Aladdin: spread 0.35% = 35 bp converted per unit (bp 35, decimal 0.0035, percent 0.35)", local({
+    cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("Local PDF succeeds")))))$conditions
     by_unit <- purrr::map(c(bp = "bp", decimal = "decimal", percent = "percent"),
                           \(u) build_aladdin_trs_payload_c1(cond, list(our_party_names = list("Curie Demo Fund"), spread_unit = u)))
     vals <- purrr::map_dbl(by_unit, \(b) b$payload$swapInfo$payLeg$spread)
     isTRUE(all.equal(unname(vals), c(35, 0.0035, 0.35))) && identical(by_unit$decimal$conversions$条件の値, "35 bp") &&
       identical(by_unit$decimal$conversions$Aladdin_の値, "0.0035")
   })),
-  check("Aladdin：想定元本は格納先を推測せず未確定にする", local({
-    cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")))))$conditions
+  check("Aladdin: notional left unresolved (destination not guessed)", local({
+    cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("Local PDF succeeds")))))$conditions
     u <- build_aladdin_trs_payload_c1(cond, list(our_party_names = list("Curie Demo Fund")))$unresolved
     any(grepl("格納先が未確認", u$理由) & u$条件 == "trade.notional_amount")
   })),
-  check("Aladdin：対応表（テスト用の架空コード）があれば、日付・スプレッド・ルックバック・カレンダーを正しいレッグに入れる", local({
-    cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")))))$conditions
+  check("Aladdin: with a test mapping, dates, spread, lookback and calendar go to the right legs", local({
+    cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("Local PDF succeeds")))))$conditions
     m <- list(our_party_names = list("Curie Demo Fund"), spread_unit = "decimal", calendar_codes = list(JPTO = "TEST-TOKYO"))
     p <- build_aladdin_trs_payload_c1(cond, m)$payload
     identical(p$swapInfo$recLeg$startDate, "2026-10-08") && identical(p$swapInfo$payLeg$spread, 0.0035) &&
@@ -207,16 +205,13 @@ results <- dplyr::bind_rows(results,
 )
 
 # 最終版の経路：同じ成果物を、Claude が api だったとして検証し直す（モックのままでは最終版にしない）
-final_case <- read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("XSD 適合（テスト用XSD）"))))
+final_case <- read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("XSD valid (test XSD)"))))
 final_case$manifest$claude_mode <- "api"
 final_check <- validate_c1_case(final_case, test_xsd)
 results <- dplyr::bind_rows(results, tibble::tibble(
-  テスト = "最終版の判定（api とみなす）", 状態 = final_check$state, 期待 = "検証済み",
-  FpML = if (isTRUE(final_check$final)) "fpml_final.xml になる" else "ドラフト", 理由 = "",
-  判定 = if (identical(final_check$state, "検証済み") && isTRUE(final_check$final)) "合格" else "不合格"))
+  test = "Final version when treated as api", pass = identical(final_check$state, "検証済み") && isTRUE(final_check$final),
+  state = final_check$state, expected = "検証済み", fpml = if (isTRUE(final_check$final)) "fpml_final.xml" else "draft"))
 
-cat("\n\n■ モックテストの結果\n")
-print(results, n = Inf, width = Inf)
-ok <- results$判定 == "合格"
-cat("\n", sum(ok), "／", length(ok), " 件が期待どおり\n", sep = "")
-if (!all(ok)) { if (interactive()) stop("期待どおりでないテストがあります。", call. = FALSE) else quit(status = 1) }   # RStudio では終了しない
+# 詳細（状態・期待・理由）は TSV に保存する
+all_ok <- report_test_results_Curie(results, file.path(root, "test_results.tsv"))
+if (!all_ok) { if (interactive()) stop("Some tests failed.", call. = FALSE) else quit(status = 1) }   # RStudio では終了しない

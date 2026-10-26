@@ -115,23 +115,23 @@ size_multiplier_Curie <- function(unit) {
 # size_multiplier : 数量の倍率を明示する場合（見出しの単位より優先）
 convert_offer_sheet_Curie <- function(path, sheet = NULL, header_row = NULL, column_map = NULL,
                                       currency = NULL, size_multiplier = NULL, scan_rows = 30) {
-  if (!file.exists(path)) stop("ファイルがありません: ", path, call. = FALSE)
+  if (!file.exists(path)) stop("File not found: ", path_display_Curie(path), call. = FALSE)
   candidates <- detect_offer_header_Curie(path, scan_rows, column_map)
   if (!is.null(sheet)) candidates <- dplyr::filter(candidates, .data$sheet == .env$sheet)
   if (!is.null(header_row)) candidates <- dplyr::filter(candidates, .data$header_row == .env$header_row)
   where <- basename(path)
   if (!nrow(candidates)) {
-    stop(where, ": 必須6項目（", paste(.required_offer_fields_Curie, collapse = ", "),
-         "）がそろう見出し行が見つかりません。column_map で列名を指定してください。", call. = FALSE)
+    stop(where, ": no header row has all 6 required fields (", paste(.required_offer_fields_Curie, collapse = ", "),
+         "). Specify the column names with column_map.", call. = FALSE)
   }
   if (nrow(candidates) > 1L) {
-    stop(where, ": オファー表の候補が複数あります。sheet（必要なら header_row）を指定してください。\n",
-         paste0("  - シート「", candidates$sheet, "」", candidates$header_row, "行目", collapse = "\n"),
+    stop(where, ": multiple offer table candidates. Specify sheet (and header_row if needed).\n",
+         paste0("  - sheet \"", candidates$sheet, "\", row ", candidates$header_row, collapse = "\n"),
          call. = FALSE)
   }
   if (nzchar(candidates$duplicated_fields)) {
-    stop(where, ": 同じ項目に対応する列が複数あります（", candidates$duplicated_fields,
-         "）。column_map で使う列を指定してください。", call. = FALSE)
+    stop(where, ": multiple columns map to the same field (", candidates$duplicated_fields,
+         "). Specify the column to use with column_map.", call. = FALSE)
   }
   target_sheet <- candidates$sheet
   head_row <- candidates$header_row
@@ -150,7 +150,7 @@ convert_offer_sheet_Curie <- function(path, sheet = NULL, header_row = NULL, col
   size_unit <- header_unit_Curie(header_cells[fields %in% "offer_size"])
   multiplier <- if (is.null(size_multiplier)) size_multiplier_Curie(size_unit) else size_multiplier
   if (is.na(multiplier)) {
-    stop(where, ": 数量の単位「", size_unit, "」を判定できません。size_multiplier を指定してください。",
+    stop(where, ": cannot determine the size unit \"", size_unit, "\". Specify size_multiplier.",
          call. = FALSE)
   }
   optional <- c("offer_currency", "offer_security_name", "sheet_issue_price")

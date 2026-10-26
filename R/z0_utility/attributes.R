@@ -31,10 +31,10 @@
 
 # 取得結果の形を確かめ、任意列がなければ NA で追加する
 check_attribute_schema_Curie <- function(attributes) {
-  if (!is.data.frame(attributes)) stop("属性取得関数は data.frame / tibble を返してください。", call. = FALSE)
+  if (!is.data.frame(attributes)) stop("The attribute fetcher must return a data.frame or tibble.", call. = FALSE)
   missing <- setdiff(.attribute_columns_required_Curie, names(attributes))
   if (length(missing)) {
-    stop("属性取得関数の結果に必須列がありません: ", paste(missing, collapse = ", "), call. = FALSE)
+    stop("Attribute fetcher result is missing required columns: ", paste(missing, collapse = ", "), call. = FALSE)
   }
   absent <- setdiff(.attribute_columns_optional_Curie, names(attributes))
   attributes[absent] <- NA
@@ -73,12 +73,12 @@ calculation_end_Curie <- function(attributes) {
 # 属性取得関数を呼び、形を確かめ、既存関数（import_bond_master_attribute_ADP）へ渡すRDSを書く。
 # このRDSは「計算に使った属性」の記録にもなる。
 fetch_attributes_Curie <- function(attribute_fetcher, isin, valuation_date, snapshot_path) {
-  if (!is.function(attribute_fetcher)) stop("attribute_fetcher には関数を渡してください。", call. = FALSE)
+  if (!is.function(attribute_fetcher)) stop("attribute_fetcher must be a function.", call. = FALSE)
   attributes <- attribute_fetcher(unique(isin), valuation_date) |>
     check_attribute_schema_Curie() |>
     calculation_end_Curie()
   if (anyDuplicated(attributes[c("ISIN", "attribute_date")])) {
-    stop("属性取得関数の結果で ISIN + attribute_date が重複しています。", call. = FALSE)
+    stop("Attribute fetcher result has duplicated ISIN + attribute_date.", call. = FALSE)
   }
   dir.create(dirname(snapshot_path), recursive = TRUE, showWarnings = FALSE)
   saveRDS(attributes, snapshot_path)

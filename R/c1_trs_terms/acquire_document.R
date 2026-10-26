@@ -22,7 +22,7 @@ strip_tracking_params_c1 <- function(url) {
 # 取得の失敗（取得失敗として扱う）
 .acquire_fail_c1 <- function(message) {
   stop(structure(class = c("c1_acquire_error", "error", "condition"),
-                 list(message = paste0("資料を取得できません（取得失敗）: ", message), call = NULL)))
+                 list(message = paste0("Cannot fetch the document: ", message), call = NULL)))
 }
 
 # URL の取得（curl）。状態コードは呼び出し側で判定する
@@ -70,21 +70,21 @@ acquire_document_c1 <- function(source, source_dir, fetcher = .curl_fetch_c1,
     if (!identical(as.integer(http$status), 200L)) {
       unlink(raw)
       hint <- if (http$status %in% c(401L, 403L)) {
-        paste0("（アクセスを拒否されました）。", if (!nzchar(user_agent))
-          "公開元によっては、名前と連絡先メールを含む User-Agent を求めます（SEC など）。その場合は tmp/.Renviron に Curie_HTTP_USER_AGENT=\"氏名 メールアドレス\" と書いてください。",
-          "アクセス制限の回避はしません")
+        paste0(" (access denied). ", if (!nzchar(user_agent))
+          "Some publishers (e.g. SEC) require a User-Agent with a name and contact email. Set Curie_HTTP_USER_AGENT=\"Name email\" in tmp/.Renviron.",
+          "Access restrictions are not bypassed.")
       } else ""
       .acquire_fail_c1(paste0("HTTP ", http$status, hint))
     }
   } else {
-    if (!file.exists(src) || dir.exists(src)) .acquire_fail_c1(paste0("ファイルがありません: ", src))
+    if (!file.exists(src) || dir.exists(src)) .acquire_fail_c1(paste0("File not found: ", gsub("\\\\", "/", src)))
     file.copy(src, raw, overwrite = TRUE)
   }
   format <- .detect_format_c1(raw, http$content_type, name)
   if (is.na(format$kind)) {
     unlink(raw)
-    .acquire_fail_c1(paste0("PDF でも HTML でもありません（Content-Type：", dplyr::coalesce(http$content_type, "なし"),
-                            "、拡張子：", format$extension, "）"))
+    .acquire_fail_c1(paste0("Not a PDF or HTML file (Content-Type: ", dplyr::coalesce(http$content_type, "none"),
+                            ", extension: ", format$extension, ")"))
   }
   original <- file.path(source_dir, paste0("original.", if (format$kind == "pdf") "pdf" else "htm"))
   file.rename(raw, original)

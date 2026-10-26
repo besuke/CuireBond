@@ -31,8 +31,8 @@ check_packages_Curie <- function(packages = .curie_packages) {
     tryCatch({ loadNamespace(p); TRUE }, error = function(e) FALSE)
   }, logical(1))
   if (!all(ok)) {
-    stop("読み込めないパッケージがあります: ", paste(packages[!ok], collapse = ", "),
-         "\n未インストール、またはDLLの読込が阻止されていないか確認してください。", call. = FALSE)
+    stop("Cannot load packages: ", paste(packages[!ok], collapse = ", "),
+         "\nCheck that they are installed and that loading their DLLs is not blocked.", call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -40,7 +40,7 @@ check_packages_Curie <- function(packages = .curie_packages) {
 # 移植した関数をグローバル環境へ読み込む（Part IIの関数名をそのまま使うため）
 load_lagrange_functions_Curie <- function(files = .curie_lagrange_default, dir = file.path("R", "z0_utility", "lagrange")) {
   unknown <- setdiff(files, names(.curie_lagrange_files))
-  if (length(unknown)) stop("依存関係が未確認のファイルです: ", paste(unknown, collapse = ", "), call. = FALSE)
+  if (length(unknown)) stop("Dependencies not registered for files: ", paste(unknown, collapse = ", "), call. = FALSE)
   check_packages_Curie(unique(unlist(.curie_lagrange_files[files])))
   purrr::walk(files, \(f) sys.source(file.path(dir, f), envir = globalenv(), keep.source = FALSE))
   invisible(file.path(dir, files))

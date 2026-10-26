@@ -6,13 +6,13 @@ calendar_from_name_Curie <- function(name) {
     Japan = QuantLib::Japan(),
     UnitedStates_GovernmentBond = QuantLib::UnitedStates("GovernmentBond"),
     TARGET = QuantLib::TARGET(),
-    stop("対応していないカレンダーです: ", name, call. = FALSE)
+    stop("Unsupported calendar: ", name, call. = FALSE)
   )
 }
 
 frequency_period_Curie <- function(coupon_frequency) {
   name <- c(`1` = "Annual", `2` = "Semiannual", `4` = "Quarterly", `12` = "Monthly")[as.character(coupon_frequency)]
-  if (is.na(name)) stop("対応していない利払回数です: ", coupon_frequency, call. = FALSE)
+  if (is.na(name)) stop("Unsupported coupon frequency: ", coupon_frequency, call. = FALSE)
   QuantLib::Period(unname(name))
 }
 

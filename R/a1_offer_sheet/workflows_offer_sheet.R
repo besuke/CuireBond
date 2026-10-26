@@ -13,7 +13,7 @@
 
 .valuation_date_Curie <- function(valuation_date) {
   d <- as.Date(valuation_date)
-  if (length(d) != 1L || is.na(d)) stop("valuation_date には日付を1つ指定してください。", call. = FALSE)
+  if (length(d) != 1L || is.na(d)) stop("Specify one date for valuation_date.", call. = FALSE)
   d
 }
 
@@ -21,7 +21,7 @@
 .check_output_path_Curie <- function(output_path, inputs) {
   if (normalizePath(output_path, winslash = "/", mustWork = FALSE) %in%
       normalizePath(inputs, winslash = "/", mustWork = FALSE)) {
-    stop("出力先が入力ファイルと同じです。元のExcelは上書きしません: ", output_path, call. = FALSE)
+    stop("The output path is the same as the input file. The original Excel file is not overwritten: ", output_path, call. = FALSE)
   }
 }
 

@@ -87,12 +87,12 @@ run_claude_c1 <- function(agent_dir, document, cmd = claude_command_c1(), args =
   log <- list(mode = "api", command = basename(cmd %||% ""), timeout_sec = timeout_sec,
               started_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"))
   if (is.na(cmd) || !nzchar(cmd)) {
-    return(list(state = "failed", log = c(log, error = "Claude Code（claude）が見つかりません。Curie_CLAUDE_CMD で指定できます")))
+    return(list(state = "failed", log = c(log, error = "Claude Code (claude) was not found. Set Curie_CLAUDE_CMD.")))
   }
   env <- "current"
   if (identical(document$kind, "pdf")) {
     bin <- .poppler_bin_c1()
-    if (is.na(bin)) return(list(state = "failed", log = c(log, error = "pdftoppm（poppler）がないため、Claude が PDF を読めません")))
+    if (is.na(bin)) return(list(state = "failed", log = c(log, error = "pdftoppm (poppler) is missing, so Claude cannot read the PDF.")))
     env <- c("current", PATH = paste(normalizePath(bin), Sys.getenv("PATH"), sep = ";"))
   }
   t0 <- Sys.time()
@@ -112,8 +112,8 @@ run_claude_c1 <- function(agent_dir, document, cmd = claude_command_c1(), args =
   if (state != "ok") {
     # 失敗・中断：途中で書かれた結果ファイルは使わない（別名で残して調べられるようにする）
     purrr::walk(.claude_outputs_c1, \(f) { p <- file.path(agent_dir, f); if (file.exists(p)) file.rename(p, paste0(p, ".incomplete")) })
-    log$error <- if (state == "timeout") paste0("タイムアウト（", timeout_sec, " 秒）で Claude を止めました") else
-      paste0("Claude が失敗しました（終了コード ", res$status, "）", if (nzchar(res$stderr %||% "")) paste0("：", substr(res$stderr, 1, 300)) else "")
+    log$error <- if (state == "timeout") paste0("Claude was stopped after the timeout (", timeout_sec, " s).") else
+      paste0("Claude failed (exit code ", res$status, ")", if (nzchar(res$stderr %||% "")) paste0(": ", substr(res$stderr, 1, 300)) else "")
   }
   list(state = state, log = log)
 }
@@ -123,7 +123,7 @@ run_claude_demo_c1 <- function(agent_dir, demo_dir) {
   unlink(file.path(agent_dir, .claude_outputs_c1))
   log <- list(mode = "demo", demo_dir = demo_dir, started_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"))
   if (is.null(demo_dir) || !dir.exists(demo_dir)) {
-    return(list(state = "failed", log = c(log, error = paste0("demo モードの結果フォルダがありません: ", demo_dir %||% "未指定"))))
+    return(list(state = "failed", log = c(log, error = paste0("Demo result folder not found: ", demo_dir %||% "not specified"))))
   }
   purrr::walk(.claude_outputs_c1, \(f) if (file.exists(file.path(demo_dir, f))) file.copy(file.path(demo_dir, f), file.path(agent_dir, f), overwrite = TRUE))
   list(state = "ok", log = log)
@@ -134,19 +134,19 @@ check_claude_outputs_c1 <- function(agent_dir) {
   p <- rlang::set_names(file.path(agent_dir, .claude_outputs_c1), c("reviewed", "fpml", "review"))
   if (!file.exists(p[["reviewed"]])) {
     head <- if (file.exists(p[["review"]])) paste(utils::head(readLines(p[["review"]], encoding = "UTF-8", warn = FALSE), 5), collapse = " ") else ""
-    return(if (grepl("読めなかった", head)) list(state = "unreadable", issues = "Claude が原文を読めなかったと報告（review_items.md）")
-           else list(state = "missing", issues = "Claude の結果（reviewed.json）がない"))
+    return(if (grepl("読めなかった", head)) list(state = "unreadable", issues = "Claude reported that it could not read the document (review_items.md).")
+           else list(state = "missing", issues = "Claude output (reviewed.json) is missing."))
   }
   x <- tryCatch(jsonlite::fromJSON(p[["reviewed"]], simplifyVector = FALSE), error = function(e) NULL)
-  if (is.null(x)) return(list(state = "invalid", issues = "reviewed.json が JSON として読めない"))
+  if (is.null(x)) return(list(state = "invalid", issues = "reviewed.json is not valid JSON."))
   fields <- x$fields %||% list()
   issues <- c(
-    if (!length(fields)) "fields がない",
+    if (!length(fields)) "fields is missing",
     unlist(purrr::imap(fields, function(f, i) c(
-      purrr::map_chr(purrr::keep(c("field", "value_status", "review_status"), \(k) is.null(f[[k]])), \(k) paste0("fields[", i, "] に ", k, " がない")),
-      if (!is.null(f$value_status) && !f$value_status %in% .value_status_levels_c1) paste0("fields[", i, "] の value_status が不正: ", f$value_status)
+      purrr::map_chr(purrr::keep(c("field", "value_status", "review_status"), \(k) is.null(f[[k]])), \(k) paste0("fields[", i, "] has no ", k)),
+      if (!is.null(f$value_status) && !f$value_status %in% .value_status_levels_c1) paste0("fields[", i, "] has an invalid value_status: ", f$value_status)
     ))),
-    if (!file.exists(p[["fpml"]])) "fpml.xml がない"
+    if (!file.exists(p[["fpml"]])) "fpml.xml is missing"
   )
   if (length(issues)) list(state = "invalid", issues = issues) else list(state = "ok", reviewed = x, issues = character())
 }

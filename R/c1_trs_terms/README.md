@@ -42,12 +42,28 @@ R で検証する。処理はすべて R（PowerShell は使わない）。TRS �
 source("scripts/run_c1_document.R", encoding = "UTF-8")   # 「資料のURL（またはファイルのパス）を貼ってください:」
 ```
 
-コンソールには、資料（PDF・HTML）から抜き出した条件の表と、XML（FpML）の保存先だけを表示する。
-検証の詳細（4つの判定と各検証）は `r_validation.json` に保存する。
+コンソールには、取引の要約と Aladdin の payload の保存先だけを表示する（値は抽出結果と対応表から作り、不明な値は Unknown）。
+
+```
+CP:          DEMO Securities Co., Ltd.
+Start:       2026-10-08
+End:         2027-10-08
+Pay leg:     JPY-TONA-OIS Compound + 35 bp / Quarterly
+Receive leg: DEMO Japan Credit Bond Index / Total Return / Quarterly
+
+Payload draft saved. NOT SENT.
+file: C:/AnalyticFin/Projects/Curie/output/c1_trs/cases/<案件ID>/result/aladdin_request_DRAFT.json
+```
+
+Pay／Receive は自社から見た向き（上の例は架空のデモ資料で、自社＝Curie Demo Fund 側）。自社の名前は対応表（`Curie_ALADDIN_MAP`）の
+`our_party_names` で指定する。指定がない、または当事者のどちらとも一致しないときは CP・Pay leg・Receive leg を Unknown にする。
+抽出した条件は `conditions.json`、検証の詳細（4つの判定と各検証）は `r_validation.json`、
+未確定の項目と理由は `aladdin_unresolved.json` に保存する。
 
 ```
 Rscript scripts/run_c1_document.R <URLまたはファイルのパス> [--claude=api|demo] [--claude-demo-dir=<フォルダ>]
 Rscript scripts/test_c1_case_mock.R        # モックテスト（Claude を呼ばない。HTTP 応答もモック）
+Rscript scripts/test_c1_inbox_mock.R       # フォルダー投入型のモックテスト（複数 PDF・重複・同名衝突・失敗など）
 Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_walkthrough.pdf）
 ```
 
@@ -57,6 +73,52 @@ Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_wa
 - Claude Code：`claude` を PATH から探す（`Curie_CLAUDE_CMD` で指定可）。タイムアウトは `Curie_CLAUDE_TIMEOUT_SEC`（既定 1800 秒）
 - Claude が PDF を読むには poppler（pdftoppm）が必要（winget の oschwartz10612.Poppler。`Curie_POPPLER_BIN` で指定可）
 - FpML の公式XSD：`Curie_FPML_XSD` に公式スキーマ一式のファイルを指定する（未設定なら「検証済み」にならない）
+
+## フォルダー投入型（inbox に PDF を置く）
+
+`scripts/run_c1_inbox.R` が RStudio からの実行例。`source("R/load_Curie.R")` のあとは作業ディレクトリに依存しない。
+
+```r
+source("R/load_Curie.R", encoding = "UTF-8")
+config <- c1_inbox_config(stable_sec = 10)          # 監視フォルダーは Curie_C1_INBOX_ROOT（tmp/.Renviron）。root = で直接も指定可
+scan_c1_inbox_once(config, claude_mode = "api")     # 起動メッセージ（監視フォルダー・保存先）を出し、1回スキャンして処理する
+read_c1_history(config)                             # 処理履歴
+start_c1_inbox_watch(config, interval_sec = 60)     # 定期監視（同じ関数を別の R プロセスで一定間隔に呼ぶ）
+stop_c1_inbox_watch(config)                         # 停止（処理中の1件が終わってから）
+```
+
+起動すると、最初に次を表示する（監視でも、ログ `logs/watch.log` の先頭に同じものを書く）。
+
+```
+CURIE_derivative_contract validation を起動しました
+監視フォルダー：C:/AnalyticFin/temp/TRS_curie_PDF（直下の PDF だけ。processed などのサブフォルダーは対象外）
+保存先　　　　：C:/AnalyticFin/temp/TRS_curie_PDF/processed
+```
+
+| フォルダー・ファイル（監視フォルダーの下） | 内容 |
+|---|---|
+| `*.pdf`（直下） | 処理する PDF（サイズと更新時刻が `stable_sec` 秒変わらないものだけ。コピー中は待つ）。出力の保存がすべて終わるまで削除・移動しない |
+| `processed/<共通名>/` | `共通名.pdf`・`共通名.tsv`・`共通名.xml`（FpML）・`共通名_payload.json`（Aladdin 用。送信しない）・`validation.json`。保存が終わってから元の PDF を消す |
+| `review/<共通名>/` | 要確認：取引日・取引最終日・相手先のどれかが不明（推測せず、不明な部分は `UNKNOWN`）。中身は processed と同じ |
+| `failed/` | 失敗の理由（`*.reason.json`）。元の PDF は監視フォルダーに残し、次からは保留（再処理は `retry_failed = TRUE`）。他のファイルの処理は続ける |
+| `duplicates/` | 処理済みの PDF と同じ内容（SHA-256）のもの。AI は呼ばない |
+| `work/` | 作業用（1件ごとの job フォルダー。保存が終われば消える） |
+| `history.jsonl` | 処理履歴：元のファイル名・SHA-256・状態（保存済み／要確認／重複／失敗）・保存後の名前・保存先・理由 |
+
+- 共通名：`TRS_取引日_取引最終日_相手先の先頭5文字`（日付は YYYYMMDD。trade date と termination date）。
+  相手先は自社でない側の当事者（自社の名前は対応表の `our_party_names`）。前後の空白を除き、Windows で使えない文字は `_` にする
+- 同名の案件があれば上書きせず `_2`、`_3` … を付ける（保存先のフォルダーを先に予約する）
+- TSV（UTF-8・BOM 付き）は縦持ち：項目ID・項目・区分・レッグ・期間番号・値・単位・記載状況・確認状態・ページ・原文根拠・
+  型／単位／原文根拠の確認・FpMLとの整合・検証結果・備考
+- FpML・TSV・payload は1回の読解・検証の結果から作る（成果物ごとに AI を呼び直さない）
+- 案件フォルダーの `extraction/` に Claude の抽出結果（reviewed.json・fpml.xml・review_items.md）を残す。
+  `regenerate_c1_case()`／`regenerate_c1_review_cases()` で、AI を呼ばずに検証・FpML・TSV・payload・共通名を作り直せる
+  （自社の名前を設定した後に review の案件を processed へ保存し直すなど）。従来の `output/c1_trs/cases/<案件ID>/` も入力にできる
+- 自社の名前：対応表の `our_party_names`、または `tmp/.Renviron` の `Curie_OUR_PARTY_NAMES`（複数は `;` 区切り）
+- コンソールの文言は英語（ログ収集で文字コードが混ざらないように）。出力先は次の行に `file:`／`dir:`（区切りは `/`）。
+  共通関数は `R/z0_utility/console.R`。テストのコンソールは英語のテスト名と PASS／FAIL だけで、詳細は `test_results.tsv`
+- 並列化：1件の処理（`process_c1_pdf()`）は引数と自分の job フォルダーだけを使う。`locks/<SHA-256>` のロックを
+  取れた処理だけがその PDF を扱う（同じ入力・同じ内容を二重に取らない）。`scan_c1_inbox_once(.walk = furrr::future_walk)` に替えられる（今は逐次）
 
 ## 案件フォルダ（`output/c1_trs/cases/<案件ID>/`）
 
@@ -96,6 +158,7 @@ Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_wa
 | ファイル | 役割 |
 |---|---|
 | `workflows_c1_case.R` | 1件の全工程（`workflows_c1_case()`）、コンソール表示用の要約 |
+| `inbox_c1.R` | フォルダー投入型：設定、1件の処理（`process_c1_pdf()`）、共通名、TSV、履歴、1回のスキャン、監視の開始・停止 |
 | `acquire_document.R` | 取得と記録（curl。User-Agent、形式の判定、追跡用パラメータの除去） |
 | `reading_data.R` | 本文の抽出（PDF・HTML の文字コードと &#147; など）。文字のないページは「本文なし」と記録 |
 | `claude_agent.R` | Claude Code の作業フォルダ・依頼文・起動（processx）・結果の形式チェック |

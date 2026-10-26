@@ -2,7 +2,7 @@
 # 市場日の不一致を別の日付で補わないこと、元Excelを上書きしないことなどを確かめる。
 # Curieプロジェクトの最上位フォルダで実行する。データはすべて架空のテスト用。
 
-if (!file.exists("Curie.Rproj")) stop("Curieプロジェクトの最上位フォルダで実行してください。")
+if (!file.exists("Curie.Rproj")) stop("Run this script from the top folder of the Curie project.")
 source("R/load_Curie.R", encoding = "UTF-8")
 source("scripts/demo_data/prepare_demo_inputs.R", encoding = "UTF-8")
 suppressPackageStartupMessages(library(dplyr))
@@ -26,7 +26,7 @@ same_results <- function(a, b) isTRUE(all.equal(select(a, any_of(key_cols)), sel
 # ---- 1. JPYだけ、ISOだけで実行 -----------------------------------------------
 jpy <- run_jpy(name = "JPY_base")
 iso <- run_iso(name = "ISO_base")
-cat("\n== 1. 単独実行 ==\n")
+say_Curie("\n== 1. Separate runs ==")
 print(count(jpy$results, pricing_status))
 print(count(iso$results, pricing_status))
 
@@ -47,10 +47,10 @@ jpy_alt <- run_jpy(offer_path = alt[["offer_jpy"]], ois_path = alt_ois[["JPY"]],
                    ois_settings = alt_settings, name = "JPY_alt")
 iso_alt <- run_iso(offer_path = alt[["offer_iso"]], ois_paths = unname(alt_ois[c("USD", "EUR", "JPY")]),
                    basis_path = alt[["basis"]], fx_path = alt[["fx"]], ois_settings = alt_settings, name = "ISO_alt")
-cat("\n== 2. 別パス・別形式 ==\n")
-cat("JPY 同じ結果:", same_results(jpy$results, jpy_alt$results),
-    " / ISO 同じ結果:", same_results(iso$results, iso_alt$results), "\n")
-cat("使ったOISファイル（ISO）:", paste(unique(iso_alt$market_log$source_file[iso_alt$market_log$data_type == "OIS"]), collapse = ", "), "\n")
+say_Curie("\n== 2. Other paths and formats ==")
+say_Curie("JPY same results: ", same_results(jpy$results, jpy_alt$results),
+          " / ISO same results: ", same_results(iso$results, iso_alt$results))
+cat("OIS files used (ISO):", paste(unique(iso_alt$market_log$source_file[iso_alt$market_log$data_type == "OIS"]), collapse = ", "), "\n")
 
 # ---- 3. 市場日が評価日と違うデータは使わない --------------------------------
 shifted_jgb <- file.path(alt_dir, "jgb_shifted.txt")
@@ -61,15 +61,19 @@ shifted_fx <- file.path(alt_dir, "fx_shifted.txt")
 read_text_table_Curie(demo$fx) |> select(-"source_file") |>
   mutate(marketdate = format(vd - 1L)) |> readr::write_delim(shifted_fx, delim = "|", na = "")
 iso_shift <- run_iso(fx_path = shifted_fx, name = "ISO_fx_shifted")
-cat("\n== 3. 市場日の不一致 ==\n")
-print(jpy_shift$market_log |> select(data_type, source_file, marketdates, status))
+say_Curie("\n== 3. Market date mismatch ==")
+# 市場データの記録（Excel に残す値）のうち、状態は英語で表示する
+print(jpy_shift$market_log |> select(data_type, source_file, marketdates, status) |>
+        mutate(data_type = recode(data_type, "JGB時価" = "JGB prices", "通貨ベーシス" = "CCS basis", "FXスポット" = "FX spot"),
+               status = case_when(status == "使用" ~ "used", startsWith(status, "評価日のデータなし") ~ "no data for the valuation date (not filled from other dates)",
+                                  .default = status)))
 cat("JPY:", unique(jpy_shift$results$validation_message[jpy_shift$results$coupon_type == "FIXED"]), "\n")
 cat("ISO:", unique(iso_shift$results$validation_message[iso_shift$results$coupon_type == "FIXED"]), "\n")
 
 # ---- 4. 元Excelを上書きしない ----------------------------------------------
 overwrite <- tryCatch(do.call(workflows_offer_sheet_JPY, modifyList(jpy_args, list(
   output_path = demo$offer_jpy, work_dir = file.path(out_dir, "work", "overwrite")))), error = function(e) e)
-cat("\n== 4. 上書きの防止 ==\n", conditionMessage(overwrite), "\n")
+say_Curie("\n== 4. Overwrite protection ==\n", conditionMessage(overwrite))
 
 # ---- 5. 確認 ---------------------------------------------------------------
 fixed_jpy <- jpy$results$coupon_type == "FIXED"
@@ -95,4 +99,4 @@ stopifnot(
   all(c("通貨ベーシス_平均", "FXスポット") %in% readxl::excel_sheets(iso$output_path)),
   all(jpy$environment$gaussquant_check$identical)
 )
-cat("\n確認：すべて合格\n")
+say_Curie("\nChecks: all passed")

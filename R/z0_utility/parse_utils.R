@@ -13,12 +13,12 @@ to_halfwidth_Curie <- function(x) {
 
 # 失敗した値とExcel行番号を添えて停止する
 .stop_parse_Curie <- function(label, values, rows) {
-  stop(label, " を解釈できません: ",
-       paste0(values, "（", rows, "行目）", collapse = ", "), call. = FALSE)
+  stop("Cannot parse ", label, ": ",
+       paste0(values, " (row ", rows, ")", collapse = ", "), call. = FALSE)
 }
 
 # 対応形式：YYYYMMDD、YYYY-MM-DD、YYYY/MM/DD、YYYY.MM.DD、YYYY年M月D日、Excelの日付番号
-parse_date_Curie <- function(x, label = "日付", rows = seq_along(x)) {
+parse_date_Curie <- function(x, label = "date", rows = seq_along(x)) {
   text <- stringr::str_squish(to_halfwidth_Curie(x))
   blank <- .blank_Curie(text)
   out <- suppressWarnings(dplyr::case_when(
@@ -37,7 +37,7 @@ parse_date_Curie <- function(x, label = "日付", rows = seq_along(x)) {
 }
 
 # 桁区切りのカンマ・空白・全角を許容する。単位の換算は呼出側で行う。
-parse_number_Curie <- function(x, label = "数値", rows = seq_along(x)) {
+parse_number_Curie <- function(x, label = "number", rows = seq_along(x)) {
   text <- stringr::str_remove_all(to_halfwidth_Curie(x), "[,\\s]")
   blank <- .blank_Curie(text)
   ok <- blank | stringr::str_detect(text, "^[+-]?(\\d+\\.?\\d*|\\.\\d+)([eE][+-]?\\d+)?$")

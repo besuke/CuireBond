@@ -71,7 +71,7 @@ validate_offer_worksheet_Curie <- function(
   key <- c("offer_date", "ISIN", "broker_names", "offer_price", "offer_size", "offer_settlementdate")
   if (nrow(out) != nrow(offers) ||
       !isTRUE(all.equal(as.data.frame(out[key]), as.data.frame(offers[key]), check.attributes = FALSE))) {
-    stop("既存関数の結果とオファーの行が対応しません。", call. = FALSE)
+    stop("Validation results do not match the offer rows.", call. = FALSE)
   }
   out <- out |>
     dplyr::rename(standard_source_file = "offer_source_file", standard_source_sheet = "offer_source_sheet") |>

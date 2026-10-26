@@ -246,14 +246,14 @@ import_ois_curves <- function(
   
   if (anyNA(tbl[c("marketdate", "tenor", "ticker")]) ||
       any(!is.finite(tbl$rate_pct))) {
-    stop("日付・Tenor・Ticker・選択した気配値に欠損があります。")
+    stop("Missing values in date, Tenor, Ticker or the selected quote.")
   }
   
   if (!is.null(marketdate)) {
     selected_date <- parse_marketdate(marketdate)
     
     if (length(selected_date) != 1L || is.na(selected_date)) {
-      stop("marketdateには有効な日付を1つ指定してください。")
+      stop("Specify one valid date for marketdate.")
     }
     
     tbl <- tbl |>
@@ -261,11 +261,11 @@ import_ois_curves <- function(
   }
   
   if (nrow(tbl) == 0L) {
-    stop("指定条件のマーケットデータがありません。")
+    stop("No market data matches the conditions.")
   }
   
   if (anyDuplicated(tbl[c("marketdate", "ticker", "tenor")])) {
-    stop("marketdate・Ticker・Tenorが重複しています。")
+    stop("Duplicated marketdate, Ticker and Tenor.")
   }
   
   tbl

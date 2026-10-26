@@ -13,13 +13,15 @@
 
 # 個人用の設定（例：Curie_HTTP_USER_AGENT）。tmp/.Renviron があれば読み込む（Git に入れない。値は表示しない）
 if (file.exists(file.path("tmp", ".Renviron"))) readRenviron(file.path("tmp", ".Renviron"))
+# Curie のフォルダー（作業ディレクトリに依存しない処理が使う。未設定なら読み込んだ場所）
+if (!nzchar(Sys.getenv("Curie_ROOT"))) Sys.setenv(Curie_ROOT = normalizePath(getwd(), winslash = "/"))
 
 source(file.path("R", "z0_utility", "00_dependencies.R"), encoding = "UTF-8")
 check_packages_Curie()
 load_lagrange_functions_Curie()   # 移植したPart IIの関数（R/z0_utility/lagrange/）
 
 .curie_modules <- list(
-  z0_utility = c("isin.R", "parse_utils.R", "import_settings.R", "market_data_import.R",
+  z0_utility = c("console.R", "isin.R", "parse_utils.R", "import_settings.R", "market_data_import.R",
                  "interpolation.R", "bond_yield_YEN.R", "attributes.R", "bond_build.R",
                  "curve_build.R", "environment_info.R", "report_format.R", "excel_format.R"),
   a1_offer_sheet = c("convert_offer_sheet.R", "spread_inputs.R", "validate_offer_worksheet.R",
@@ -28,6 +30,6 @@ load_lagrange_functions_Curie()   # 移植したPart IIの関数（R/z0_utility/
   # c1 は jsonlite・xml2・pdftools・openssl・curl・processx を使う（関数を呼んだときに必要）
   c1_trs_terms = c("trs_fields.R", "verify_quotes.R", "fpml_trs.R", "fpml_validate.R", "acquire_document.R",
                    "reading_data.R", "claude_agent.R", "read_results.R", "validate_results.R", "aladdin_payload.R",
-                   "workflows_c1_case.R")
+                   "workflows_c1_case.R", "inbox_c1.R")
 )
 purrr::iwalk(.curie_modules, \(files, dir) purrr::walk(files, \(f) source(file.path("R", dir, f), encoding = "UTF-8")))

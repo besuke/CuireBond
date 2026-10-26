@@ -27,9 +27,9 @@
 }
 
 read_c1_case_results <- function(case_dir) {
-  if (!dir.exists(case_dir)) stop("案件フォルダがありません: ", case_dir, call. = FALSE)
+  if (!dir.exists(case_dir)) stop("Case folder not found.\n", path_line_Curie(case_dir, "dir"), call. = FALSE)
   manifest_path <- file.path(case_dir, "manifest.json")
-  if (!file.exists(manifest_path)) stop("manifest.json がありません（処理が途中で止まった可能性）: ", case_dir, call. = FALSE)
+  if (!file.exists(manifest_path)) stop("manifest.json is missing (processing may have stopped midway).\n", path_line_Curie(case_dir, "dir"), call. = FALSE)
   manifest <- jsonlite::fromJSON(manifest_path, simplifyVector = FALSE)
   result_dir <- file.path(case_dir, "result")
   path_of <- function(f) { p <- file.path(result_dir, f); if (file.exists(p)) p else NA_character_ }

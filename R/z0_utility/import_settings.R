@@ -25,17 +25,17 @@ text_import_settings_Curie <- function(delim = "|", encoding = "UTF-8", column_m
 # 区切り文字・文字コード・列名対応に従って読み、全列を文字列で返す。
 # 元ファイル名（source_file）を付ける。
 read_text_table_Curie <- function(path, settings = text_import_settings_Curie()) {
-  if (!file.exists(path)) stop("ファイルがありません: ", path, call. = FALSE)
+  if (!file.exists(path)) stop("File not found: ", path, call. = FALSE)
   x <- readr::read_delim(
     path, delim = settings$delim, col_types = readr::cols(.default = "c"),
     locale = readr::locale(encoding = settings$encoding), trim_ws = TRUE,
     show_col_types = FALSE, progress = FALSE
   )
-  if (nrow(readr::problems(x))) stop("区切り文字で正しく読めない行があります: ", path, call. = FALSE)
+  if (nrow(readr::problems(x))) stop("Some rows cannot be read with the delimiter: ", path, call. = FALSE)
   map <- settings$column_map
   if (length(map)) {
     missing <- setdiff(unname(map), names(x))
-    if (length(missing)) stop(basename(path), "：列名対応の元の列がありません: ", paste(missing, collapse = ", "), call. = FALSE)
+    if (length(missing)) stop(basename(path), ": source columns in the column map are missing: ", paste(missing, collapse = ", "), call. = FALSE)
     x <- dplyr::rename(x, dplyr::all_of(map))
   }
   dplyr::mutate(x, source_file = basename(path))
@@ -58,15 +58,15 @@ normalize_ois_file_Curie <- function(path, settings, work_dir) {
 # 複数のOISファイルを読み、元ファイル名を残して1つにする。
 # settings は1つ（全ファイル共通）か、ファイルごとの list。
 import_ois_files_Curie <- function(paths, settings, work_dir) {
-  if (!length(paths)) stop("OISファイルを指定してください。", call. = FALSE)
+  if (!length(paths)) stop("Specify the OIS files.", call. = FALSE)
   per_file <- if (!is.null(settings$delim)) rep(list(settings), length(paths)) else settings
-  if (length(per_file) != length(paths)) stop("ois_settings の数がファイル数と一致しません。", call. = FALSE)
+  if (length(per_file) != length(paths)) stop("The number of ois_settings does not match the number of files.", call. = FALSE)
   normalized <- purrr::map2_chr(paths, per_file, \(p, s) normalize_ois_file_Curie(p, s, work_dir))
   quotes <- purrr::map2(normalized, paths, function(n, original) {
     import_market_data(n) |> dplyr::mutate(source_file = basename(original))
   }) |> purrr::list_rbind()
   if (anyDuplicated(quotes[c("marketdate", "currency", "instrument", "tenor")])) {
-    stop("OIS気配の marketdate + currency + instrument + tenor が重複しています。", call. = FALSE)
+    stop("OIS quotes have duplicated marketdate + currency + instrument + tenor.", call. = FALSE)
   }
   list(quotes = quotes, normalized_paths = normalized)
 }
