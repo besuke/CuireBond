@@ -4,9 +4,9 @@
 # オファー単価（offer_price）と発行単価（issue_price）は別項目である。
 # JPYシートの「参考:発行価格」は業者が添えた参考値で、評価には銘柄属性の値を使う。
 
-demo_offer_rows_CURIE <- function(marketdate = demo_marketdate_CURIE) {
-  bonds <- demo_bonds_CURIE()
-  # security_index は demo_bonds_CURIE() の行番号。6（変動利付）と12（コーラブル）は未対応の確認用
+demo_offer_rows_Curie <- function(marketdate = demo_marketdate_Curie) {
+  bonds <- demo_bonds_Curie()
+  # security_index は demo_bonds_Curie() の行番号。6（変動利付）と12（コーラブル）は未対応の確認用
   tibble::tribble(
     ~security_index, ~broker,                 ~offer_price, ~size_display,
     1L,              "テスト証券A",           99.62,        5,
@@ -34,8 +34,8 @@ demo_offer_rows_CURIE <- function(marketdate = demo_marketdate_CURIE) {
 }
 
 # JPY用ブック：説明シート、オファーシート、訂正前シート（見出しが同じ＝候補が2つ）
-write_demo_offer_jpy_CURIE <- function(path, marketdate = demo_marketdate_CURIE) {
-  rows <- demo_offer_rows_CURIE(marketdate) |> dplyr::filter(.data$currency == "JPY")
+write_demo_offer_jpy_Curie <- function(path, marketdate = demo_marketdate_Curie) {
+  rows <- demo_offer_rows_Curie(marketdate) |> dplyr::filter(.data$currency == "JPY")
   # 日付は「YYYY/MM/DD」、数量は額面「億円」、単価は額面100円当たり
   jpy_sheet <- function(r, title) {
     header <- c("No.", "オファー日", "ISINコード", "銘柄名", "業者名",
@@ -56,13 +56,13 @@ write_demo_offer_jpy_CURIE <- function(path, marketdate = demo_marketdate_CURIE)
       ),
       body,
       list(NA_character_, "※ 架空の銘柄・価格です。実在の銘柄・市場価格ではありません。")
-    ) |> rows_to_sheet_CURIE()
+    ) |> rows_to_sheet_Curie()
   }
   # 訂正前シート：価格だけ古い値（変換時に候補が2つになることを示すため）
   stale <- rows |> dplyr::mutate(offer_price = .data$offer_price - 0.10)
   sheets <- list(
-    "説明" = description_sheet_CURIE(c(
-      "用途" = "CURIEデモ用の円債オファー（架空データ）",
+    "説明" = description_sheet_Curie(c(
+      "用途" = "Curieデモ用の円債オファー（架空データ）",
       "対象シート" = "「円債オファー」が正。「円債オファー_訂正前」は差替前の版",
       "見出し行" = "5行目（1〜4行目は表題と注記）",
       "単価" = "額面100円当たりのクリーン価格",
@@ -74,13 +74,13 @@ write_demo_offer_jpy_CURIE <- function(path, marketdate = demo_marketdate_CURIE)
     "円債オファー" = jpy_sheet(rows, "円債オファー一覧（デモ・架空データ）"),
     "円債オファー_訂正前" = jpy_sheet(stale, "円債オファー一覧（訂正前・使用しない）")
   )
-  write_xlsx_CURIE(sheets, path, col_names = FALSE)
+  write_xlsx_Curie(sheets, path, col_names = FALSE)
   invisible(path)
 }
 
 # ISO（外貨）用ブック：英語の見出し、見出し行は3行目、日付はYYYYMMDD、数量は百万単位
-write_demo_offer_iso_CURIE <- function(path, marketdate = demo_marketdate_CURIE) {
-  rows <- demo_offer_rows_CURIE(marketdate) |> dplyr::filter(.data$currency != "JPY")
+write_demo_offer_iso_Curie <- function(path, marketdate = demo_marketdate_Curie) {
+  rows <- demo_offer_rows_Curie(marketdate) |> dplyr::filter(.data$currency != "JPY")
   header <- c("Trade Date", "Settle Date", "ISIN", "Security", "Dealer", "Ccy", "Price", "Size (MM)")
   body <- purrr::pmap(rows, function(...) {
     x <- list(...)
@@ -94,11 +94,11 @@ write_demo_offer_iso_CURIE <- function(path, marketdate = demo_marketdate_CURIE)
     ),
     list(header),  # 3行目：見出し
     body
-  ) |> rows_to_sheet_CURIE()
+  ) |> rows_to_sheet_Curie()
   readme <- tibble::tribble(
     ~V1,              ~V2,
     "Item",           "Description",
-    "Purpose",        "CURIE demo offers for foreign currency (ISO) bonds - fictitious",
+    "Purpose",        "Curie demo offers for foreign currency (ISO) bonds - fictitious",
     "Header row",     "Row 3 of sheet 'Offers'",
     "Price",          "Clean price per 100 face",
     "Size",           "Face amount, millions of the bond currency (Size (MM))",
@@ -106,15 +106,15 @@ write_demo_offer_iso_CURIE <- function(path, marketdate = demo_marketdate_CURIE)
     "ISIN",           "Test codes containing TEST. They do not exist.",
     "注記",           "架空のテスト用データ。実在の銘柄・市場価格ではない"
   )
-  write_xlsx_CURIE(list("README" = readme, "Offers" = offers), path, col_names = FALSE)
+  write_xlsx_Curie(list("README" = readme, "Offers" = offers), path, col_names = FALSE)
   invisible(path)
 }
 
-create_demo_offers_CURIE <- function(dir, marketdate = demo_marketdate_CURIE) {
+create_demo_offers_Curie <- function(dir, marketdate = demo_marketdate_Curie) {
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   stamp <- format(marketdate, "%Y%m%d")
   c(
-    JPY = write_demo_offer_jpy_CURIE(file.path(dir, paste0("demo_offers_JPY_", stamp, ".xlsx")), marketdate),
-    ISO = write_demo_offer_iso_CURIE(file.path(dir, paste0("demo_offers_ISO_", stamp, ".xlsx")), marketdate)
+    JPY = write_demo_offer_jpy_Curie(file.path(dir, paste0("demo_offers_JPY_", stamp, ".xlsx")), marketdate),
+    ISO = write_demo_offer_iso_Curie(file.path(dir, paste0("demo_offers_ISO_", stamp, ".xlsx")), marketdate)
   )
 }

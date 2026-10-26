@@ -3,11 +3,11 @@
 # 結合と既存の検証は、移植した workflows_validate_worksheet()
 # （内部で import_offer_sheet()、import_bond_master_attribute_ADP()、import_market_data()、
 #   merge_offer_bond_attributes() を使う。R/z0_utility/lagrange/）にそのまま任せる。
-# オファーは convert_offer_sheet_CURIE() の結果を標準形式のExcelに書き、それを既存関数へ渡す。
-# 既存関数は元ファイル名・行番号などCURIEの追加列を落とすため、行の順序で戻す
+# オファーは convert_offer_sheet_Curie() の結果を標準形式のExcelに書き、それを既存関数へ渡す。
+# 既存関数は元ファイル名・行番号などCurieの追加列を落とすため、行の順序で戻す
 # （既存関数は行数・行順を変えないことを自ら確認している）。
 #
-# このファイルで追加するのは、CURIE独自の問題コードだけである。
+# このファイルで追加するのは、Curie独自の問題コードだけである。
 #   offer_date_not_valuation_date  オファー日が評価日と異なる（別の日の市場データで補わない）
 #   currency_outside_workflow      建て通貨がワークフローの対象外（JPY側はJPY建て、ISO側は円以外）
 #   unsupported_product            変動利付・期限前償還・満期一括以外など、現在の計算関数の対象外
@@ -15,7 +15,7 @@
 #   unsupported_redemption_not_100 償還額が100以外
 #   unsupported_redemption_type    満期一括償還（BULLET）以外
 #   unsupported_day_count          GaussQuant::day_counter_GQL() が扱えない日数計算方式
-#   unsupported_calendar           calendar_from_name_CURIE() が扱えないカレンダー
+#   unsupported_calendar           calendar_from_name_Curie() が扱えないカレンダー
 #   offer_currency_mismatch        オファー表の通貨と銘柄属性の通貨が不一致
 #   sheet_issue_price_mismatch     オファー表の参考発行価格と銘柄属性の発行価格が不一致
 #   missing_JGB_prices             JPY側：評価日のJGB時価がない
@@ -23,7 +23,7 @@
 #   missing_CCS_basis              ISO側：モデルの契約条件に合う評価日の対円ベーシス気配がない
 
 # 商品・条件が計算関数の対象外であることを示すコード（入力の誤りとは区別して「未対応」とする）
-.unsupported_issue_codes_CURIE <- c(
+.unsupported_issue_codes_Curie <- c(
   "unsupported_product", "unsupported_coupon_type", "unsupported_coupon_frequency",
   "unsupported_redemption_not_100", "unsupported_redemption_type",
   "unsupported_day_count", "unsupported_calendar"
@@ -37,23 +37,23 @@
   "payment_convention", "schedule_convention", "maturity_convention", "date_generation"
 )
 
-# CURIEの追加列（既存関数の結果に、行の順序で戻す）
+# Curieの追加列（既存関数の結果に、行の順序で戻す）
 .curie_offer_metadata <- c(
   "offer_book", "offer_currency", "offer_security_name", "sheet_issue_price",
   "offer_size_unit", "offer_size_multiplier", "offer_source_file", "offer_source_sheet",
   "offer_source_row", "offer_header_row"
 )
 
-.supported_CURIE <- function(x, f) {
+.supported_Curie <- function(x, f) {
   purrr::map_lgl(x, \(v) !is.na(v) && !inherits(tryCatch(f(v), error = function(e) e), "error"))
 }
 
 # workflow      : "JPY"（JPY建て）または "ISO"（円以外の建て通貨）
-# offers        : convert_offer_sheet_CURIE() の結果（offer_book 列付き）
-# standard_file : write_offer_standard_CURIE() で書いた標準形式のExcel
+# offers        : convert_offer_sheet_Curie() の結果（offer_book 列付き）
+# standard_file : write_offer_standard_Curie() で書いた標準形式のExcel
 # master_path   : 属性取得結果のRDS、ois_paths : import_market_data() が読めるOISファイル
 # market        : list(jgb = ...)（JPY）または list(fx = ..., basis = ...)（ISO）
-validate_offer_worksheet_CURIE <- function(
+validate_offer_worksheet_Curie <- function(
     workflow = c("JPY", "ISO"), offers, standard_file, master_path, ois_paths, market, valuation_date,
     attribute_policy = c("exact", "previous"),
     curve_instruments = c(JPY = "TONAR_OIS", USD = "SOFR_OIS", EUR = "ESTR_OIS", GBP = "SONIA_OIS", AUD = "AONIA_OIS"),
@@ -84,11 +84,11 @@ validate_offer_worksheet_CURIE <- function(
     offer_date_not_valuation_date = flag(out$offer_date != valuation_date),
     currency_outside_workflow = has_attr & !is.na(out$currency) & !in_scope,
     unsupported_product = has_attr & !is.na(out$unsupported_reason),
-    invalid_ISIN_check_digit = grepl("^[A-Z]{2}[A-Z0-9]{9}[0-9]$", out$ISIN) & !is_valid_isin_CURIE(out$ISIN),
+    invalid_ISIN_check_digit = grepl("^[A-Z]{2}[A-Z0-9]{9}[0-9]$", out$ISIN) & !is_valid_isin_Curie(out$ISIN),
     unsupported_redemption_not_100 = flag(out$redemption > 0 & abs(out$redemption - 100) > 1e-12),
     unsupported_redemption_type = flag(out$redemption_type != "BULLET"),
-    unsupported_day_count = has_attr & !is.na(out$day_count) & !.supported_CURIE(out$day_count, GaussQuant::day_counter_GQL),
-    unsupported_calendar = has_attr & !is.na(out$calendar) & !.supported_CURIE(out$calendar, calendar_from_name_CURIE),
+    unsupported_day_count = has_attr & !is.na(out$day_count) & !.supported_Curie(out$day_count, GaussQuant::day_counter_GQL),
+    unsupported_calendar = has_attr & !is.na(out$calendar) & !.supported_Curie(out$calendar, calendar_from_name_Curie),
     offer_currency_mismatch = flag(out$offer_currency != out$currency),
     sheet_issue_price_mismatch = flag(abs(out$sheet_issue_price - out$issue_price) > 1e-9)
   )
@@ -103,7 +103,7 @@ validate_offer_worksheet_CURIE <- function(
     })
     n_basis <- purrr::map_int(out$currency, function(ccy) {
       if (is.na(ccy) || ccy == "JPY" || !ccy %in% names(index_names)) return(0L)
-      terms <- basis_terms_for_model_CURIE(ccy, index_names[[ccy]])
+      terms <- basis_terms_for_model_Curie(ccy, index_names[[ccy]])
       market$basis |>
         dplyr::filter(.data$marketdate == valuation_date, .data$currency_pair == paste0(ccy, "JPY")) |>
         dplyr::semi_join(tibble::as_tibble(terms), by = names(terms)) |>
@@ -118,7 +118,7 @@ validate_offer_worksheet_CURIE <- function(
   out$validation_message <- purrr::map_chr(out$validation_issues, \(x) paste(x, collapse = "; "))
   # 不合格の理由が「商品・条件が対象外」だけなら、入力の誤りではなく未対応として扱う
   out$unsupported_only <- purrr::map_lgl(out$validation_issues, \(x) {
-    length(x) > 0L && all(x %in% .unsupported_issue_codes_CURIE)
+    length(x) > 0L && all(x %in% .unsupported_issue_codes_Curie)
   })
   out
 }

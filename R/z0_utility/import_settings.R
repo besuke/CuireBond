@@ -2,13 +2,13 @@
 # 実ファイルの形式が決まったら、ここで定義する設定（区切り文字・文字コード・列名対応）を
 # 呼出側で指定するだけで差し替えられるようにする。
 
-# オファーExcelの取込設定（convert_offer_sheet_CURIE() の引数）
+# オファーExcelの取込設定（convert_offer_sheet_Curie() の引数）
 # sheet      : 対象シート名。NULLなら見出しから自動判定（候補が複数なら停止）
 # header_row : 見出しのExcel行番号。NULLなら自動判定
 # column_map : c(共通列名 = "元の見出し")
 # currency   : 通貨列がないシートで使う通貨（JPYブックなど）
 # size_multiplier : 数量の倍率（見出しの単位より優先）
-offer_import_settings_CURIE <- function(sheet = NULL, header_row = NULL, column_map = NULL,
+offer_import_settings_Curie <- function(sheet = NULL, header_row = NULL, column_map = NULL,
                                         currency = NULL, size_multiplier = NULL, scan_rows = 30) {
   list(sheet = sheet, header_row = header_row, column_map = column_map,
        currency = currency, size_multiplier = size_multiplier, scan_rows = scan_rows)
@@ -18,13 +18,13 @@ offer_import_settings_CURIE <- function(sheet = NULL, header_row = NULL, column_
 # delim      : 区切り文字（デモは "|"）
 # encoding   : 文字コード（例 "UTF-8"、"CP932"）
 # column_map : c(共通列名 = "元の列名")。対応しない列はそのまま残す
-text_import_settings_CURIE <- function(delim = "|", encoding = "UTF-8", column_map = NULL) {
+text_import_settings_Curie <- function(delim = "|", encoding = "UTF-8", column_map = NULL) {
   list(delim = delim, encoding = encoding, column_map = column_map)
 }
 
 # 区切り文字・文字コード・列名対応に従って読み、全列を文字列で返す。
 # 元ファイル名（source_file）を付ける。
-read_text_table_CURIE <- function(path, settings = text_import_settings_CURIE()) {
+read_text_table_Curie <- function(path, settings = text_import_settings_Curie()) {
   if (!file.exists(path)) stop("ファイルがありません: ", path, call. = FALSE)
   x <- readr::read_delim(
     path, delim = settings$delim, col_types = readr::cols(.default = "c"),
@@ -43,12 +43,12 @@ read_text_table_CURIE <- function(path, settings = text_import_settings_CURIE())
 
 # OISファイルを、移植した import_market_data() が読めるパイプ区切り・UTF-8・標準列名に
 # そろえる。すでにその形式なら元ファイルをそのまま使う（既存関数は変更しない）。
-normalize_ois_file_CURIE <- function(path, settings, work_dir) {
+normalize_ois_file_Curie <- function(path, settings, work_dir) {
   if (identical(settings$delim, "|") && identical(toupper(settings$encoding), "UTF-8") &&
       !length(settings$column_map)) {
     return(normalizePath(path, winslash = "/"))
   }
-  x <- read_text_table_CURIE(path, settings) |> dplyr::select(-"source_file")
+  x <- read_text_table_Curie(path, settings) |> dplyr::select(-"source_file")
   dir.create(work_dir, recursive = TRUE, showWarnings = FALSE)
   out <- file.path(work_dir, paste0(tools::file_path_sans_ext(basename(path)), "_normalized.txt"))
   readr::write_delim(x, out, delim = "|", na = "")
@@ -57,11 +57,11 @@ normalize_ois_file_CURIE <- function(path, settings, work_dir) {
 
 # 複数のOISファイルを読み、元ファイル名を残して1つにする。
 # settings は1つ（全ファイル共通）か、ファイルごとの list。
-import_ois_files_CURIE <- function(paths, settings, work_dir) {
+import_ois_files_Curie <- function(paths, settings, work_dir) {
   if (!length(paths)) stop("OISファイルを指定してください。", call. = FALSE)
   per_file <- if (!is.null(settings$delim)) rep(list(settings), length(paths)) else settings
   if (length(per_file) != length(paths)) stop("ois_settings の数がファイル数と一致しません。", call. = FALSE)
-  normalized <- purrr::map2_chr(paths, per_file, \(p, s) normalize_ois_file_CURIE(p, s, work_dir))
+  normalized <- purrr::map2_chr(paths, per_file, \(p, s) normalize_ois_file_Curie(p, s, work_dir))
   quotes <- purrr::map2(normalized, paths, function(n, original) {
     import_market_data(n) |> dplyr::mutate(source_file = basename(original))
   }) |> purrr::list_rbind()
@@ -72,7 +72,7 @@ import_ois_files_CURIE <- function(paths, settings, work_dir) {
 }
 
 # 市場データの日付を評価日と照合した記録（不一致・不足を黙って補わないため）
-market_data_log_CURIE <- function(x, data_type, valuation_date, date_col = "marketdate") {
+market_data_log_Curie <- function(x, data_type, valuation_date, date_col = "marketdate") {
   if (!"quote_time" %in% names(x)) x$quote_time <- NA_character_
   x |>
     dplyr::summarise(

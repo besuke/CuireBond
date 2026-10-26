@@ -135,7 +135,7 @@ build_fpml_trs_c1 <- function(values, document_id, mode = c("final", "draft"),
 
   doc <- xml2::xml_new_root("dataDocument", xmlns = .fpml_ns_c1, fpmlVersion = "5-12")
   head <- c(
-    paste0("CURIE c1 TRS FpML（", if (mode == "final") "正式版" else "ドラフト：正式なFpMLではない", "） document_id=", document_id),
+    paste0("Curie c1 TRS FpML（", if (mode == "final") "正式版" else "ドラフト：正式なFpMLではない", "） document_id=", document_id),
     "FpML 5.x confirmation の returnSwap を目指した構造。公式XSDでの検証は未実施",
     if (length(unconfirmed)) paste0("照合が未確定のまま抽出値で出力した必須項目: ", paste(unconfirmed, collapse = ", ")),
     if (length(not_output)) paste0("空欄・選択肢・記載なし・不一致のため出力していない必須項目: ", paste(not_output, collapse = ", ")),

@@ -6,30 +6,30 @@
 #   欠損   … 計算したはずの値が欠けている（本来は起きない。起きたら要確認）
 #   —      … その項目が対象外（例：JPY債の円換算ASW）
 
-.na_label_CURIE <- function(computed) dplyr::if_else(computed, "欠損", "未計算")
+.na_label_Curie <- function(computed) dplyr::if_else(computed, "欠損", "未計算")
 
 # 数値を桁数をそろえた文字列にする。computed は「計算済みであるべき行」かどうか
-format_number_CURIE <- function(x, digits = 2, computed = rep(TRUE, length(x)), big_mark = ",") {
+format_number_Curie <- function(x, digits = 2, computed = rep(TRUE, length(x)), big_mark = ",") {
   out <- formatC(x, format = "f", digits = digits, big.mark = big_mark)
-  dplyr::if_else(is.na(x), .na_label_CURIE(computed), out)
+  dplyr::if_else(is.na(x), .na_label_Curie(computed), out)
 }
 
-format_date_CURIE <- function(x, na = "—") {
+format_date_Curie <- function(x, na = "—") {
   dplyr::if_else(is.na(x), na, format(as.Date(x), "%Y-%m-%d"))
 }
 
 # 計算状態・検証状態の日本語表示
-pricing_status_label_CURIE <- function(x) {
+pricing_status_label_Curie <- function(x) {
   dplyr::recode(x, success = "成功", partial = "一部未計算", failed = "失敗",
                 unsupported = "未対応", skipped = "入力不備", .default = x, .missing = "—")
 }
-validation_status_label_CURIE <- function(x) {
+validation_status_label_Curie <- function(x) {
   dplyr::recode(x, valid = "合格", invalid = "不合格", .default = x, .missing = "—")
 }
 
 # flextable の共通書式。labels = c(列名 = "見出し")、widths = c(列名 = 幅（インチ）)、
 # right = 右寄せにする列（数値列）
-flextable_CURIE <- function(data, labels = NULL, widths = NULL, right = character(), caption = NULL) {
+flextable_Curie <- function(data, labels = NULL, widths = NULL, right = character(), caption = NULL) {
   ft <- flextable::flextable(data)
   if (length(labels)) {
     labels <- labels[intersect(names(labels), names(data))]

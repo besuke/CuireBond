@@ -1,5 +1,5 @@
 # 依存関係の確認と、移植したPart IIの関数（R/z0_utility/lagrange/）の読込。
-# パッケージの確認（check_packages_CURIE）は、確認対象のパッケージに頼らずR標準の関数だけで書く。
+# パッケージの確認（check_packages_Curie）は、確認対象のパッケージに頼らずR標準の関数だけで書く。
 # （tibble等が読めない環境でも、何が不足しているかを表示できるようにするため）
 # 移植関数の読込は、purrr を含む必要パッケージを確認した後に purrr で行う。
 #
@@ -21,12 +21,12 @@
   "compute_asset_swap_ISO.R", "compute_asset_swap_basis_JPY.R"
 )
 
-# CURIE本体で使うパッケージ
+# Curie本体で使うパッケージ
 .curie_packages <- c("dplyr", "purrr", "tibble", "tidyr", "stringr", "readr", "readxl",
                      "writexl", "xml2", "zip", "rlang", "collapse", "QuantLib", "GaussQuant")
 
 # 不足パッケージを一覧で示して停止する。インストールは行わない。
-check_packages_CURIE <- function(packages = .curie_packages) {
+check_packages_Curie <- function(packages = .curie_packages) {
   ok <- vapply(packages, function(p) {
     tryCatch({ loadNamespace(p); TRUE }, error = function(e) FALSE)
   }, logical(1))
@@ -38,10 +38,10 @@ check_packages_CURIE <- function(packages = .curie_packages) {
 }
 
 # 移植した関数をグローバル環境へ読み込む（Part IIの関数名をそのまま使うため）
-load_lagrange_functions_CURIE <- function(files = .curie_lagrange_default, dir = file.path("R", "z0_utility", "lagrange")) {
+load_lagrange_functions_Curie <- function(files = .curie_lagrange_default, dir = file.path("R", "z0_utility", "lagrange")) {
   unknown <- setdiff(files, names(.curie_lagrange_files))
   if (length(unknown)) stop("依存関係が未確認のファイルです: ", paste(unknown, collapse = ", "), call. = FALSE)
-  check_packages_CURIE(unique(unlist(.curie_lagrange_files[files])))
+  check_packages_Curie(unique(unlist(.curie_lagrange_files[files])))
   purrr::walk(files, \(f) sys.source(file.path(dir, f), envir = globalenv(), keep.source = FALSE))
   invisible(file.path(dir, files))
 }

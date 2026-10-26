@@ -40,9 +40,9 @@
 
 workflows_c1_case <- function(source, claude_mode = c("api", "demo"),
                               case_id = NULL, output_root = file.path("output", "c1_trs", "cases"),
-                              claude_demo_dir = NULL, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""),
+                              claude_demo_dir = NULL, xsd_path = Sys.getenv("Curie_FPML_XSD", ""),
                               instruction_path = file.path("docs", "c1_trs_extraction_instructions.md"),
-                              timeout_sec = as.numeric(Sys.getenv("CURIE_CLAUDE_TIMEOUT_SEC", "1800")),
+                              timeout_sec = as.numeric(Sys.getenv("Curie_CLAUDE_TIMEOUT_SEC", "1800")),
                               claude_cmd = claude_command_c1(), claude_args = NULL, fetcher = .curl_fetch_c1,
                               aladdin_map = read_aladdin_map_c1()) {
   claude_mode <- match.arg(claude_mode)

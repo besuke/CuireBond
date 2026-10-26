@@ -8,7 +8,7 @@
 # 列名は LagrangeFinance の銘柄属性の列名に合わせる。maturity_date は最終償還日。
 # First Call日（first_call_date）は最終償還日とは別に持ち、計算終期は別の列で明示する。
 
-.attribute_columns_required_CURIE <- c(
+.attribute_columns_required_Curie <- c(
   "ISIN", "attribute_date", "currency",
   "coupon_type",                     # FIXED / FLOATING
   "coupon_rate",                     # 小数。変動利付は取得時点のクーポン（参考）
@@ -20,7 +20,7 @@
   "payment_convention", "schedule_convention", "maturity_convention", "date_generation"
 )
 
-.attribute_columns_optional_CURIE <- c(
+.attribute_columns_optional_Curie <- c(
   "security_name", "issuer_name", "redemption_type", "end_of_month",
   # 変動利付
   "floating_index", "floating_spread_bp", "reset_frequency", "reset_lag_days",
@@ -30,13 +30,13 @@
 )
 
 # 取得結果の形を確かめ、任意列がなければ NA で追加する
-check_attribute_schema_CURIE <- function(attributes) {
+check_attribute_schema_Curie <- function(attributes) {
   if (!is.data.frame(attributes)) stop("属性取得関数は data.frame / tibble を返してください。", call. = FALSE)
-  missing <- setdiff(.attribute_columns_required_CURIE, names(attributes))
+  missing <- setdiff(.attribute_columns_required_Curie, names(attributes))
   if (length(missing)) {
     stop("属性取得関数の結果に必須列がありません: ", paste(missing, collapse = ", "), call. = FALSE)
   }
-  absent <- setdiff(.attribute_columns_optional_CURIE, names(attributes))
+  absent <- setdiff(.attribute_columns_optional_Curie, names(attributes))
   attributes[absent] <- NA
   attributes |>
     tibble::as_tibble() |>
@@ -49,7 +49,7 @@ check_attribute_schema_CURIE <- function(attributes) {
 
 # 計算終期。現在の計算関数（固定利付・満期一括・償還額100）が対応する銘柄だけ最終償還日とし、
 # それ以外は計算終期を決めず、未対応の理由を返す（固定利付債として代用しない）。
-calculation_end_CURIE <- function(attributes) {
+calculation_end_Curie <- function(attributes) {
   attributes |>
     dplyr::mutate(
       unsupported_reason = dplyr::case_when(
@@ -72,11 +72,11 @@ calculation_end_CURIE <- function(attributes) {
 
 # 属性取得関数を呼び、形を確かめ、既存関数（import_bond_master_attribute_ADP）へ渡すRDSを書く。
 # このRDSは「計算に使った属性」の記録にもなる。
-fetch_attributes_CURIE <- function(attribute_fetcher, isin, valuation_date, snapshot_path) {
+fetch_attributes_Curie <- function(attribute_fetcher, isin, valuation_date, snapshot_path) {
   if (!is.function(attribute_fetcher)) stop("attribute_fetcher には関数を渡してください。", call. = FALSE)
   attributes <- attribute_fetcher(unique(isin), valuation_date) |>
-    check_attribute_schema_CURIE() |>
-    calculation_end_CURIE()
+    check_attribute_schema_Curie() |>
+    calculation_end_Curie()
   if (anyDuplicated(attributes[c("ISIN", "attribute_date")])) {
     stop("属性取得関数の結果で ISIN + attribute_date が重複しています。", call. = FALSE)
   }

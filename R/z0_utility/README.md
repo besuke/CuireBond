@@ -17,4 +17,4 @@
 | `curve_build.R` | 評価日の気配からOISカーブを構築（移植した `instance_swap_curve()`） |
 | `environment_info.R` | 実行環境とGaussQuant（インストール済み版とソース版）の照合 |
 | `report_format.R` | 表示用の整形（桁数・日付・欠損と未計算の区別、flextable の共通書式）。計算はしない |
-| `excel_format.R` | Excelの共通書式（英数字 Cambria、日本語 MS UI Gothic。日本語を含む文字列は文字種ごとの区間に分ける）。`write_xlsx_CURIE()` |
+| `excel_format.R` | Excelの共通書式（英数字 Cambria、日本語 MS UI Gothic。日本語を含む文字列は文字種ごとの区間に分ける）。`write_xlsx_Curie()` |

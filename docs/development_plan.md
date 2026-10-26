@@ -1,4 +1,4 @@
-# CURIE 開発計画
+# Curie 開発計画
 
 記録日：2026-10-25。各項目の状態を次の2つで示す。
 
@@ -25,7 +25,7 @@ A は Phase 1、B は Phase 2、C はTRS等の契約条件の読取、Z0 は共�
 
 ## 基本方針
 
-CURIEは、債券運用の分析・入れ替え提案・発注支援を行う。
+Curieは、債券運用の分析・入れ替え提案・発注支援を行う。
 
 - 数値計算、評価、最適化、制約判定はRで行う。
 - AI（Claudeエージェント）は、クレジット資料の読解・整理、数値結果の説明、提案理由の文章化を担う。AIは数値を計算・変更しない。
@@ -44,11 +44,11 @@ CURIEは、債券運用の分析・入れ替え提案・発注支援を行う。
 |---|---|
 | JPYワークフロー（JPY建て、ユーロ円債を含む）：JPY OIS ASW、JGBスプレッド | `workflows_offer_sheet_JPY()` |
 | ISOワークフロー（円以外の建て通貨）：自国通貨OIS ASW、円換算ASW | `workflows_offer_sheet_ISO()` |
-| 入力ファイル・評価日・出力先・取込設定を関数の引数で指定 | `offer_import_settings_CURIE()`、`text_import_settings_CURIE()` |
-| オファーExcelの形式変換（見出し判定、元ファイル・行番号の保持） | `convert_offer_sheet_CURIE()` |
+| 入力ファイル・評価日・出力先・取込設定を関数の引数で指定 | `offer_import_settings_Curie()`、`text_import_settings_Curie()` |
+| オファーExcelの形式変換（見出し判定、元ファイル・行番号の保持） | `convert_offer_sheet_Curie()` |
 | 銘柄属性の取得（ISINキー、取得関数を引数で差替え。現在はデモ取得関数） | `R/z0_utility/attributes.R` |
-| 未対応商品の識別（変動利付・期限前償還条項付き等。計算はせず理由を出力） | `calculation_end_CURIE()` |
-| 結果のExcel出力（JPY／ISO別） | `write_offer_results_excel_CURIE()` |
+| 未対応商品の識別（変動利付・期限前償還条項付き等。計算はせず理由を出力） | `calculation_end_Curie()` |
+| 結果のExcel出力（JPY／ISO別） | `write_offer_results_excel_Curie()` |
 
 本番連携で未完了の内容：
 

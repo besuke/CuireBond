@@ -1,18 +1,18 @@
-# CURIE デモの確認：JPY・ISOを別々に実行し、入力パス・形式を変えても同じ結果になること、
+# Curie デモの確認：JPY・ISOを別々に実行し、入力パス・形式を変えても同じ結果になること、
 # 市場日の不一致を別の日付で補わないこと、元Excelを上書きしないことなどを確かめる。
-# CURIEプロジェクトの最上位フォルダで実行する。データはすべて架空のテスト用。
+# Curieプロジェクトの最上位フォルダで実行する。データはすべて架空のテスト用。
 
-if (!file.exists("CURIE.Rproj")) stop("CURIEプロジェクトの最上位フォルダで実行してください。")
-source("R/load_CURIE.R", encoding = "UTF-8")
+if (!file.exists("Curie.Rproj")) stop("Curieプロジェクトの最上位フォルダで実行してください。")
+source("R/load_Curie.R", encoding = "UTF-8")
 source("scripts/demo_data/prepare_demo_inputs.R", encoding = "UTF-8")
 suppressPackageStartupMessages(library(dplyr))
 
-demo <- prepare_demo_inputs_CURIE()
+demo <- prepare_demo_inputs_Curie()
 vd <- demo$marketdate
 out_dir <- file.path("output", "checks")
 jpy_args <- list(offer_path = demo$offer_jpy, ois_path = demo$ois_jpy, jgb_path = demo$jgb,
                  valuation_date = vd, attribute_fetcher = demo$attribute_fetcher,
-                 offer_settings = offer_import_settings_CURIE(sheet = "円債オファー", currency = "JPY"))
+                 offer_settings = offer_import_settings_Curie(sheet = "円債オファー", currency = "JPY"))
 iso_args <- list(offer_path = demo$offer_iso, ois_paths = c(demo$ois_usd, demo$ois_eur, demo$ois_jpy),
                  basis_path = demo$basis, fx_path = demo$fx, valuation_date = vd,
                  attribute_fetcher = demo$attribute_fetcher)
@@ -40,9 +40,9 @@ alt <- purrr::map_chr(c(offer_jpy = demo$offer_jpy, offer_iso = demo$offer_iso, 
   file.copy(p, to, overwrite = TRUE)
   to
 })
-alt_ois <- purrr::map_chr(c(JPY = "JPY", USD = "USD", EUR = "EUR"), \(ccy) write_demo_ois_alternative_CURIE(
+alt_ois <- purrr::map_chr(c(JPY = "JPY", USD = "USD", EUR = "EUR"), \(ccy) write_demo_ois_alternative_Curie(
   file.path(alt_dir, paste0("ois_", ccy, "_cp932.csv")), ccy, vd))
-alt_settings <- demo_ois_alternative_settings_CURIE()
+alt_settings <- demo_ois_alternative_settings_Curie()
 jpy_alt <- run_jpy(offer_path = alt[["offer_jpy"]], ois_path = alt_ois[["JPY"]], jgb_path = alt[["jgb"]],
                    ois_settings = alt_settings, name = "JPY_alt")
 iso_alt <- run_iso(offer_path = alt[["offer_iso"]], ois_paths = unname(alt_ois[c("USD", "EUR", "JPY")]),
@@ -54,11 +54,11 @@ cat("使ったOISファイル（ISO）:", paste(unique(iso_alt$market_log$source
 
 # ---- 3. 市場日が評価日と違うデータは使わない --------------------------------
 shifted_jgb <- file.path(alt_dir, "jgb_shifted.txt")
-read_text_table_CURIE(demo$jgb) |> select(-"source_file") |>
+read_text_table_Curie(demo$jgb) |> select(-"source_file") |>
   mutate(marketdate = format(vd + 1L)) |> readr::write_delim(shifted_jgb, delim = "|", na = "")
 jpy_shift <- run_jpy(jgb_path = shifted_jgb, name = "JPY_jgb_shifted")
 shifted_fx <- file.path(alt_dir, "fx_shifted.txt")
-read_text_table_CURIE(demo$fx) |> select(-"source_file") |>
+read_text_table_Curie(demo$fx) |> select(-"source_file") |>
   mutate(marketdate = format(vd - 1L)) |> readr::write_delim(shifted_fx, delim = "|", na = "")
 iso_shift <- run_iso(fx_path = shifted_fx, name = "ISO_fx_shifted")
 cat("\n== 3. 市場日の不一致 ==\n")

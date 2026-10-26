@@ -12,13 +12,13 @@
 # - 既存ASW関数は債券の受渡日（Bond_settlementDate）を開始日とするため、それが
 #   オファーの受渡日と一致することを確かめ、違えば計算しない
 # - 計算終期は calculation_end_date（現在は最終償還日。固定利付・満期一括・償還額100のみ）
-# - ASWの翌日物レッグの払い方は pricing_settings_CURIE() で指定する。
+# - ASWの翌日物レッグの払い方は pricing_settings_Curie() で指定する。
 #   既定の半年払い・支払ラグ0は、現段階ではデモの仮定（既存関数の既定値と同じ）
-# - 円換算ASWは既存の簡易モデル（.jpy_asw_model_note_CURIE を参照）
+# - 円換算ASWは既存の簡易モデル（.jpy_asw_model_note_Curie を参照）
 # - fx_spot は「ASW開始日に交換するレート」。FXの受渡日が開始日と違う行は計算しない
 # - JGBスプレッド = 対象JPY債の複利利回り − 同じ償還日に補間したJGB複利利回り（bp）
 
-.jpy_asw_model_note_CURIE <- paste(
+.jpy_asw_model_note_Curie <- paste(
   "既存の簡易モデル（compute_asset_swap_basis_JPY）：円担保・元本固定・開始日と満期に元本交換。",
   "満期に対応するベーシス1点（気配を補間した値）で外貨割引の一定スプレッドを校正する。",
   "CCSの期間構造全体を校正したモデルではない。MtMリセット・FXスワップ調整・取引費用・",
@@ -26,7 +26,7 @@
 )
 
 # 計算設定。ASWの払い方は、現段階ではデモの仮定として半年払い・支払ラグ0を既定にする。
-pricing_settings_CURIE <- function(
+pricing_settings_Curie <- function(
     asw_payment_frequency = "Semiannual", asw_payment_lag = 0L,
     jpy_payment_frequency = "Semiannual", jpy_payment_lag = 0L,
     jgb_compound_frequency = 2,
@@ -38,7 +38,7 @@ pricing_settings_CURIE <- function(
   )
 }
 
-.empty_pricing_CURIE <- function(settings) {
+.empty_pricing_Curie <- function(settings) {
   tibble::tibble(
     valuation_date = as.Date(NA), bond_settlement_date = as.Date(NA), asw_effective_date = as.Date(NA),
     asw_maturity_date = as.Date(NA), accrued_per_100 = NA_real_, dirty_price = NA_real_,
@@ -62,8 +62,8 @@ pricing_settings_CURIE <- function(
 }
 
 # JPY債：JGBスプレッド（対象債とJGBは同じ関数・同じ受渡日・同じ利払回数と複利回数で計算）
-.price_jgb_spread_CURIE <- function(out, row, jgb_avg, settings) {
-  out$jpy_compound_yield_pct <- compound_yield_YEN_CURIE(
+.price_jgb_spread_Curie <- function(out, row, jgb_avg, settings) {
+  out$jpy_compound_yield_pct <- compound_yield_YEN_Curie(
     row$offer_settlementdate, row$calculation_end_date, row$coupon_rate, row$offer_price,
     row$redemption, row$coupon_frequency, settings$jgb_compound_frequency
   )
@@ -71,7 +71,7 @@ pricing_settings_CURIE <- function(
     "GaussQuant::bond_compound_yield_from_price_YEN_GQL、クリーン単価、受渡日 ",
     row$offer_settlementdate, "、利払年", row$coupon_frequency, "回・複利年",
     settings$jgb_compound_frequency, "回、残存年数は満年数＋端数ACT/365（対象債・JGB共通）")
-  spread <- jgb_spread_CURIE(jgb_avg, row$offer_date, row$offer_settlementdate, row$calculation_end_date,
+  spread <- jgb_spread_Curie(jgb_avg, row$offer_date, row$offer_settlementdate, row$calculation_end_date,
                              out$jpy_compound_yield_pct, row$coupon_frequency, settings$jgb_compound_frequency)
   out$jgb_interpolated_yield_pct <- spread$jgb_interpolated_yield_pct
   out$jgb_spread_bp <- spread$jgb_spread_bp
@@ -83,15 +83,15 @@ pricing_settings_CURIE <- function(
 }
 
 # 外貨債：円換算ASW（既存の簡易モデル）
-.price_jpy_asw_CURIE <- function(out, row, bond, native, curve, curves, fx, basis_avg, settings) {
+.price_jpy_asw_Curie <- function(out, row, bond, native, curve, curves, fx, basis_avg, settings) {
   ccy <- row$currency
   out$jpy_asw_status <- "not_computed"
-  out$jpy_asw_model <- .jpy_asw_model_note_CURIE
+  out$jpy_asw_model <- .jpy_asw_model_note_Curie
   jpy_curve <- curves[["JPY"]]
   fx_row <- dplyr::filter(fx, .data$marketdate == row$offer_date,
                           .data$base_currency == ccy, .data$quote_currency == "JPY")
-  basis_row <- interpolate_ccs_basis_CURIE(basis_avg, row$offer_date, row$calculation_end_date, ccy,
-                                           basis_terms_for_model_CURIE(ccy, curve$index_name))
+  basis_row <- interpolate_ccs_basis_Curie(basis_avg, row$offer_date, row$calculation_end_date, ccy,
+                                           basis_terms_for_model_Curie(ccy, curve$index_name))
   out$basis_bp <- basis_row$basis_bp
   out$basis_quote_set_id <- basis_row$basis_quote_set_id
   out$basis_method <- basis_row$basis_method
@@ -140,8 +140,8 @@ pricing_settings_CURIE <- function(
 }
 
 # オファー1行の計算。各指標に「計算済み／未計算」と理由を付ける。
-price_offer_row_CURIE <- function(workflow, row, curves, market, basis_avg, jgb_avg, settings) {
-  out <- .empty_pricing_CURIE(settings)
+price_offer_row_Curie <- function(workflow, row, curves, market, basis_avg, jgb_avg, settings) {
+  out <- .empty_pricing_Curie(settings)
   out$valuation_date <- row$offer_date
   fail <- function(message) {
     out$pricing_status <- "failed"
@@ -164,7 +164,7 @@ price_offer_row_CURIE <- function(workflow, row, curves, market, basis_avg, jgb_
     return(fail(paste0(row$currency, " のOISカーブを構築できない: ", curve$error)))
   }
   run <- function() {
-    bond <- build_fixed_rate_bond_CURIE(row)
+    bond <- build_fixed_rate_bond_Curie(row)
     # 評価日をオファー日にし、債券の受渡日がオファーの受渡日と一致するか確かめる
     GaussQuant::set_eval_date_GQL(GaussQuant::date_GQL(as.character(row$offer_date)))
     out$bond_settlement_date <- as.Date(GaussQuant::safe_iso_GQH(QuantLib::Bond_settlementDate(bond)))
@@ -190,9 +190,9 @@ price_offer_row_CURIE <- function(workflow, row, curves, market, basis_avg, jgb_
     out$native_ois_marketdate <- curve$marketdate
     out$native_ois_quote_time <- curve$quote_time
     step <- if (workflow == "JPY") {
-      .price_jgb_spread_CURIE(out, row, jgb_avg, settings)
+      .price_jgb_spread_Curie(out, row, jgb_avg, settings)
     } else {
-      .price_jpy_asw_CURIE(out, row, bond, native, curve, curves, market$fx, basis_avg, settings)
+      .price_jpy_asw_Curie(out, row, bond, native, curve, curves, market$fx, basis_avg, settings)
     }
     out <- step$out
     out$pricing_status <- if (length(step$message)) "partial" else "success"
@@ -205,22 +205,22 @@ price_offer_row_CURIE <- function(workflow, row, curves, market, basis_avg, jgb_
 # 検証済みワークシート全体の計算（評価日は1つ）。
 # workflow = "JPY"：JPY OIS ASW と JGBスプレッド。market = list(jgb_yields = ...)
 # workflow = "ISO"：自国OIS ASW と円換算ASW。market = list(fx = ..., basis = ...)
-compute_offer_pricing_CURIE <- function(workflow = c("JPY", "ISO"), worksheet, ois, market, valuation_date,
-                                        settings = pricing_settings_CURIE()) {
+compute_offer_pricing_Curie <- function(workflow = c("JPY", "ISO"), worksheet, ois, market, valuation_date,
+                                        settings = pricing_settings_Curie()) {
   workflow <- match.arg(workflow)
-  basis_avg <- if (workflow == "ISO") average_ccs_basis_CURIE(market$basis) else NULL
-  jgb_avg <- if (workflow == "JPY") average_jgb_yields_CURIE(market$jgb_yields) else NULL
+  basis_avg <- if (workflow == "ISO") average_ccs_basis_Curie(market$basis) else NULL
+  jgb_avg <- if (workflow == "JPY") average_jgb_yields_Curie(market$jgb_yields) else NULL
   valid_ccy <- stats::na.omit(worksheet$currency[worksheet$validation_status == "valid"])
   needed <- unique(c("JPY", valid_ccy))
-  curves <- build_ois_curves_CURIE(ois, valuation_date, needed)
+  curves <- build_ois_curves_Curie(ois, valuation_date, needed)
   results <- purrr::map(seq_len(nrow(worksheet)), \(i) {
-    price_offer_row_CURIE(workflow, worksheet[i, ], curves, market, basis_avg, jgb_avg, settings)
+    price_offer_row_Curie(workflow, worksheet[i, ], curves, market, basis_avg, jgb_avg, settings)
   }) |> purrr::list_rbind()
   list(
     results = worksheet |>
       dplyr::select(-dplyr::any_of(names(results))) |>
       dplyr::bind_cols(results),
-    curves = summarise_ois_curves_CURIE(curves),
+    curves = summarise_ois_curves_Curie(curves),
     basis_average = basis_avg,
     jgb_average = jgb_avg,
     settings = settings

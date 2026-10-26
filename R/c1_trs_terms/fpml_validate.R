@@ -1,9 +1,9 @@
 # c1：FpMLの構文・スキーマ検証（xml2）。
 # 構文（整形式）は常に検証する。スキーマ（XSD）は、FpML公式のスキーマファイルを
-# 環境変数 CURIE_FPML_XSD（または引数 xsd_path）で指定したときだけ検証する。
+# 環境変数 Curie_FPML_XSD（または引数 xsd_path）で指定したときだけ検証する。
 # 公式スキーマは手元にないため、未指定なら「XSD未設定（スキーマ検証未実施）」と記録する。
 
-validate_fpml_c1 <- function(path, xsd_path = Sys.getenv("CURIE_FPML_XSD", "")) {
+validate_fpml_c1 <- function(path, xsd_path = Sys.getenv("Curie_FPML_XSD", "")) {
   doc <- tryCatch(xml2::read_xml(path), error = function(e) e)
   well_formed <- !inherits(doc, "error")
   root_ok <- well_formed && xml2::xml_name(doc) %in% c("dataDocument", "requestConfirmation")

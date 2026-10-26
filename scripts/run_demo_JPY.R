@@ -1,11 +1,11 @@
-# CURIE デモ（JPYのみ）：円オファー → JPY OIS ASW・JGBスプレッド → Excel出力
-# CURIEプロジェクトの最上位フォルダで実行する。データはすべて架空のテスト用。
+# Curie デモ（JPYのみ）：円オファー → JPY OIS ASW・JGBスプレッド → Excel出力
+# Curieプロジェクトの最上位フォルダで実行する。データはすべて架空のテスト用。
 
-if (!file.exists("CURIE.Rproj")) stop("CURIEプロジェクトの最上位フォルダで実行してください。")
-source("R/load_CURIE.R", encoding = "UTF-8")
+if (!file.exists("Curie.Rproj")) stop("Curieプロジェクトの最上位フォルダで実行してください。")
+source("R/load_Curie.R", encoding = "UTF-8")
 source("scripts/demo_data/prepare_demo_inputs.R", encoding = "UTF-8")
 
-demo <- prepare_demo_inputs_CURIE()
+demo <- prepare_demo_inputs_Curie()
 
 jpy <- workflows_offer_sheet_JPY(
   offer_path = demo$offer_jpy,
@@ -14,7 +14,7 @@ jpy <- workflows_offer_sheet_JPY(
   valuation_date = demo$marketdate,
   output_path = file.path("output", "offer_results_JPY_demo_20261006.xlsx"),
   attribute_fetcher = demo$attribute_fetcher,
-  offer_settings = offer_import_settings_CURIE(sheet = "円債オファー", currency = "JPY"),
+  offer_settings = offer_import_settings_Curie(sheet = "円債オファー", currency = "JPY"),
   work_dir = file.path("output", "work", "JPY")
 )
 

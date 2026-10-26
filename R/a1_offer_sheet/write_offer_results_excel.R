@@ -3,7 +3,7 @@
 # JPYとISOは別のExcelに出力する。元のオファーExcelと同じパスには書かない。
 # スプレッドの単位はすべてbp（列名の末尾 _bp）。利回りは%（_pct）。
 
-.result_columns_common_CURIE <- c(
+.result_columns_common_Curie <- c(
   # 元のオファー情報
   "offer_book", "offer_source_file", "offer_source_sheet", "offer_source_row",
   "offer_date", "ISIN", "offer_security_name", "broker_names", "offer_currency",
@@ -22,7 +22,7 @@
   "native_asw_bp", "native_ois_curve_id", "native_ois_marketdate", "native_ois_quote_time"
 )
 
-.result_columns_workflow_CURIE <- list(
+.result_columns_workflow_Curie <- list(
   JPY = c("jpy_compound_yield_pct", "jgb_interpolated_yield_pct", "jgb_spread_bp",
           "jgb_yield_convention", "jgb_curve_id", "jgb_marketdate", "jgb_quote_time", "jgb_spread_status"),
   ISO = c("fx_spot", "fx_spot_date", "fx_quote_id", "fx_marketdate", "fx_quote_time",
@@ -32,7 +32,7 @@
           "jpy_ois_curve_id", "jpy_ois_marketdate", "jpy_ois_quote_time", "jpy_asw_model", "jpy_asw_status")
 )
 
-result_column_notes_CURIE <- function(workflow) {
+result_column_notes_Curie <- function(workflow) {
   common <- tibble::tribble(
     ~列,                               ~内容,
     "offer_source_file/sheet/row",    "元のオファーExcelのファイル・シート・行番号",
@@ -73,7 +73,7 @@ result_column_notes_CURIE <- function(workflow) {
   dplyr::bind_rows(common, specific)
 }
 
-.notes_CURIE <- function(workflow, results, settings) {
+.notes_Curie <- function(workflow, results, settings) {
   status_count <- table(results$pricing_status)
   common <- c(
     "ワークフロー" = if (workflow == "JPY") "JPY（建て通貨が円。ユーロ円債を含む）" else "ISO（建て通貨が円以外）",
@@ -83,7 +83,7 @@ result_column_notes_CURIE <- function(workflow) {
     "市場データの日付" = "評価日と同じ市場日のデータだけを使う。不一致・不足を別の日付で補わない（「市場データ」シート）",
     "自国ASW" = "compute_asset_swap_ISO()：債券CFを支払い、翌日物＋スプレッドを受け取る。オファー単価はクリーン価格",
     "ASWの払い方" = paste0("翌日物レッグ ", settings$asw_payment_frequency, "、支払ラグ ", settings$asw_payment_lag,
-                      "。", settings$assumption_note, "（pricing_settings_CURIE() で変更可）"),
+                      "。", settings$assumption_note, "（pricing_settings_Curie() で変更可）"),
     "計算終期" = "最終償還日。変動利付・期限前償還条項付き等は計算関数の対象外とし、固定利付債として代用しない（unsupported）"
   )
   specific <- if (workflow == "JPY") {
@@ -95,7 +95,7 @@ result_column_notes_CURIE <- function(workflow) {
     )
   } else {
     c(
-      "円換算ASW" = .jpy_asw_model_note_CURIE,
+      "円換算ASW" = .jpy_asw_model_note_Curie,
       "通貨ベーシス" = paste("外貨OISフラット支払／円TONAR＋basis受取。同一の通貨ペア・市場日・契約条件・償還日の気配を算術平均し、",
                          "残存年数で自然3次スプライン補間（外挿なし）。ベーシス気配の補間であり、CCSカーブのブートストラップではない"),
       "FXの向き" = "fx_spot は外貨1単位当たりの円。ASW開始日の交換レートとして使い、受渡日が開始日と違う場合は計算しない"
@@ -107,7 +107,7 @@ result_column_notes_CURIE <- function(workflow) {
 }
 
 # market_sheets : 市場データの一覧（JPY：JGB利回りなど、ISO：通貨ベーシスなど）の名前付きlist
-write_offer_results_excel_CURIE <- function(workflow = c("JPY", "ISO"), pricing, market_log, attributes,
+write_offer_results_excel_Curie <- function(workflow = c("JPY", "ISO"), pricing, market_log, attributes,
                                             market_sheets, environment, gaussquant_check, path,
                                             protected_paths = character()) {
   workflow <- match.arg(workflow)
@@ -115,7 +115,7 @@ write_offer_results_excel_CURIE <- function(workflow = c("JPY", "ISO"), pricing,
   if (target %in% normalizePath(protected_paths, winslash = "/", mustWork = FALSE)) {
     stop("出力先が入力ファイルと同じです。元のExcelは上書きしません: ", path, call. = FALSE)
   }
-  columns <- c(.result_columns_common_CURIE, .result_columns_workflow_CURIE[[workflow]],
+  columns <- c(.result_columns_common_Curie, .result_columns_workflow_Curie[[workflow]],
                "pricing_status", "pricing_message")
   results <- pricing$results |>
     dplyr::select(dplyr::any_of(columns)) |>
@@ -125,11 +125,11 @@ write_offer_results_excel_CURIE <- function(workflow = c("JPY", "ISO"), pricing,
   # list列は書けないため、属性の記録は表の列だけにする
   attribute_sheet <- dplyr::select(attributes, dplyr::where(\(x) !is.list(x)))
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  write_xlsx_CURIE(
+  write_xlsx_Curie(
     c(
       list(
-        "説明" = .notes_CURIE(workflow, results, pricing$settings),
-        "列の説明" = result_column_notes_CURIE(workflow),
+        "説明" = .notes_Curie(workflow, results, pricing$settings),
+        "列の説明" = result_column_notes_Curie(workflow),
         "オファー結果" = results,
         "集計" = summary,
         "市場データ" = market_log,

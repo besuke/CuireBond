@@ -1,5 +1,5 @@
-# CURIE本体の読込（デモデータの生成は含まない。デモは scripts/ を参照）。
-# CURIEプロジェクトの最上位フォルダで source("R/load_CURIE.R", encoding = "UTF-8") とする。
+# Curie本体の読込（デモデータの生成は含まない。デモは scripts/ を参照）。
+# Curieプロジェクトの最上位フォルダで source("R/load_Curie.R", encoding = "UTF-8") とする。
 #
 # R/
 #   z0_utility/       共通関数（Part IIから移植した関数、取込・変換・検証・属性取得・カーブ・債券計算）
@@ -11,12 +11,12 @@
 #   b2_rebalancing/   Phase 2：ポートフォリオ入れ替え提案（未実装）
 #   b3_aladdin_orders/ Phase 2：Aladdin APIによる発注（未実装）
 
-# 個人用の設定（例：CURIE_HTTP_USER_AGENT）。tmp/.Renviron があれば読み込む（Git に入れない。値は表示しない）
+# 個人用の設定（例：Curie_HTTP_USER_AGENT）。tmp/.Renviron があれば読み込む（Git に入れない。値は表示しない）
 if (file.exists(file.path("tmp", ".Renviron"))) readRenviron(file.path("tmp", ".Renviron"))
 
 source(file.path("R", "z0_utility", "00_dependencies.R"), encoding = "UTF-8")
-check_packages_CURIE()
-load_lagrange_functions_CURIE()   # 移植したPart IIの関数（R/z0_utility/lagrange/）
+check_packages_Curie()
+load_lagrange_functions_Curie()   # 移植したPart IIの関数（R/z0_utility/lagrange/）
 
 .curie_modules <- list(
   z0_utility = c("isin.R", "parse_utils.R", "import_settings.R", "market_data_import.R",

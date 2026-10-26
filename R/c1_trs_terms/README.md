@@ -53,10 +53,10 @@ Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_wa
 
 - 入力：公開 PDF・HTML の URL、ローカルの PDF・HTML。Box の資料は Box Drive の同期フォルダのパスを貼る
 - モード：`api`（Claude Code を実行）／`demo`（用意した結果を使う。Claude は呼ばない）。黙って切り替えない
-- 公開元によっては名前と連絡先を含む User-Agent が必要（SEC など）：`tmp/.Renviron` に `CURIE_HTTP_USER_AGENT="氏名 メールアドレス"` と書く（`R/load_CURIE.R` が読み込む。`tmp/` は Git 管理対象外）
-- Claude Code：`claude` を PATH から探す（`CURIE_CLAUDE_CMD` で指定可）。タイムアウトは `CURIE_CLAUDE_TIMEOUT_SEC`（既定 1800 秒）
-- Claude が PDF を読むには poppler（pdftoppm）が必要（winget の oschwartz10612.Poppler。`CURIE_POPPLER_BIN` で指定可）
-- FpML の公式XSD：`CURIE_FPML_XSD` に公式スキーマ一式のファイルを指定する（未設定なら「検証済み」にならない）
+- 公開元によっては名前と連絡先を含む User-Agent が必要（SEC など）：`tmp/.Renviron` に `Curie_HTTP_USER_AGENT="氏名 メールアドレス"` と書く（`R/load_Curie.R` が読み込む。`tmp/` は Git 管理対象外）
+- Claude Code：`claude` を PATH から探す（`Curie_CLAUDE_CMD` で指定可）。タイムアウトは `Curie_CLAUDE_TIMEOUT_SEC`（既定 1800 秒）
+- Claude が PDF を読むには poppler（pdftoppm）が必要（winget の oschwartz10612.Poppler。`Curie_POPPLER_BIN` で指定可）
+- FpML の公式XSD：`Curie_FPML_XSD` に公式スキーマ一式のファイルを指定する（未設定なら「検証済み」にならない）
 
 ## 案件フォルダ（`output/c1_trs/cases/<案件ID>/`）
 
@@ -86,7 +86,7 @@ Rscript scripts/make_c1_walkthrough.R      # 動き方の説明 PDF（docs/c1_wa
 
 - 原文の値をそのまま使える項目（開始日・終了日・通貨・ルックバック日数）だけ入れる
 - Aladdin のコード・列挙値・スプレッドの単位・自社の向き（payLeg／recLeg）は、対応表（`config/aladdin_map_example.json` の形。
-  埋めたものは `tmp/aladdin_map.json` などに置き、`CURIE_ALADDIN_MAP` で指定）にあるときだけ入れる。なければ未確定として理由を残す
+  埋めたものは `tmp/aladdin_map.json` などに置き、`Curie_ALADDIN_MAP` で指定）にあるときだけ入れる。なければ未確定として理由を残す
 - スプレッドは、条件の値（bp）を対応表の `spread_unit`（bp・decimal・percent）に換算する。例：原文「0.90%」→ 90 bp → decimal 0.009
 - 想定元本は、提示された見本に項目がないため、格納先を推測せず未確定として残す
 - 送信処理は作っていない（環境の確認と認証情報の提供の後に作る）

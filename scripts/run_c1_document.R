@@ -1,5 +1,5 @@
 # c1：TRS 確認書1件の処理（R → Claude Code → R）。コンソールには資料から抜き出した条件を表示する
-# CURIEプロジェクトの最上位フォルダで実行する。
+# Curieプロジェクトの最上位フォルダで実行する。
 #
 #   source("scripts/run_c1_document.R", encoding = "UTF-8")      # RStudio：資料のURLかファイルのパスを貼る
 #   c1_args <- c("--claude=demo", "--claude-demo-dir=<フォルダ>"); source(...)   # RStudio でモードを指定する
@@ -8,8 +8,8 @@
 # 入力：公開 PDF・HTML の URL、ローカルの PDF・HTML（Box Drive の同期フォルダのファイルも可。形式は自動で判定する）。
 # 成果物：result/conditions.json と FpML（検証済みなら fpml_final.xml、それ以外は fpml_DRAFT.xml）。
 
-if (!file.exists("CURIE.Rproj")) stop("CURIEプロジェクトの最上位フォルダで実行してください。")
-source("R/load_CURIE.R", encoding = "UTF-8")
+if (!file.exists("Curie.Rproj")) stop("Curieプロジェクトの最上位フォルダで実行してください。")
+source("R/load_Curie.R", encoding = "UTF-8")
 
 # RStudio で source() するときは、事前に c1_args <- c("--claude=demo", ...) と書けば同じ指定ができる
 args <- if (exists("c1_args", envir = globalenv())) get("c1_args", envir = globalenv()) else commandArgs(trailingOnly = TRUE)

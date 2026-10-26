@@ -3,7 +3,7 @@
 # 入力：公開 PDF・HTML の URL、ローカルの PDF・HTML（Box Drive の同期フォルダのファイルも可）
 # 記録：取得元、取得日時、HTTP の状態・Content-Type・最終 URL、形式（中身・Content-Type・拡張子と判定根拠）、
 #       文字コード（HTML）、サイズ、SHA-256
-# URL の取得には CURIE_HTTP_USER_AGENT（tmp/.Renviron 等）を User-Agent として付ける。
+# URL の取得には Curie_HTTP_USER_AGENT（tmp/.Renviron 等）を User-Agent として付ける。
 # 403 などのアクセス拒否は理由を表示して止める（回避しない）。
 
 .is_url_c1 <- function(x) grepl("^https?://", x, ignore.case = TRUE)
@@ -55,7 +55,7 @@ strip_tracking_params_c1 <- function(url) {
 # 資料を取得して案件フォルダの source/ に保存し、取得記録を返す
 # fetcher：URL の取得関数（function(url, path, user_agent) → list(status, content_type, final_url)）。テストで差し替える
 acquire_document_c1 <- function(source, source_dir, fetcher = .curl_fetch_c1,
-                                user_agent = Sys.getenv("CURIE_HTTP_USER_AGENT", "")) {
+                                user_agent = Sys.getenv("Curie_HTTP_USER_AGENT", "")) {
   dir.create(source_dir, recursive = TRUE, showWarnings = FALSE)
   pasted <- trimws(gsub('^"|"$', "", source))
   src <- strip_tracking_params_c1(pasted)
@@ -65,13 +65,13 @@ acquire_document_c1 <- function(source, source_dir, fetcher = .curl_fetch_c1,
   retrieved_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
   http <- list(status = NA_integer_, content_type = NA_character_, final_url = NA_character_)
   if (is_url) {
-    ua <- if (nzchar(user_agent)) user_agent else "CURIE-c1 (TRS terms reader)"
+    ua <- if (nzchar(user_agent)) user_agent else "Curie-c1 (TRS terms reader)"
     http <- tryCatch(fetcher(src, raw, ua), error = function(e) .acquire_fail_c1(conditionMessage(e)))
     if (!identical(as.integer(http$status), 200L)) {
       unlink(raw)
       hint <- if (http$status %in% c(401L, 403L)) {
         paste0("（アクセスを拒否されました）。", if (!nzchar(user_agent))
-          "公開元によっては、名前と連絡先メールを含む User-Agent を求めます（SEC など）。その場合は tmp/.Renviron に CURIE_HTTP_USER_AGENT=\"氏名 メールアドレス\" と書いてください。",
+          "公開元によっては、名前と連絡先メールを含む User-Agent を求めます（SEC など）。その場合は tmp/.Renviron に Curie_HTTP_USER_AGENT=\"氏名 メールアドレス\" と書いてください。",
           "アクセス制限の回避はしません")
       } else ""
       .acquire_fail_c1(paste0("HTTP ", http$status, hint))

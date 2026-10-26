@@ -2,7 +2,7 @@
 
 
 # 評価日の気配で、必要な通貨のOISカーブを1回だけ作る。失敗は理由付きで返す。
-build_ois_curves_CURIE <- function(ois, valuation_date, currencies) {
+build_ois_curves_Curie <- function(ois, valuation_date, currencies) {
   currencies |>
     rlang::set_names() |>
     purrr::map(function(ccy) {
@@ -22,7 +22,7 @@ build_ois_curves_CURIE <- function(ois, valuation_date, currencies) {
     })
 }
 
-summarise_ois_curves_CURIE <- function(curves) {
+summarise_ois_curves_Curie <- function(curves) {
   purrr::imap(curves, function(x, ccy) {
     if (!is.null(x$error)) {
       return(tibble::tibble(currency = ccy, curve_status = "failed", curve_message = x$error))

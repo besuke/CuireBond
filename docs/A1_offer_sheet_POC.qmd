@@ -1,5 +1,5 @@
 ---
-title: "CURIE A1 オファーシート作成 POC"
+title: "Curie A1 オファーシート作成 POC"
 subtitle: "既存のA1ワークフローを実行し、入力・計算条件・結果・制約を確認する"
 lang: ja
 date: today
@@ -26,7 +26,7 @@ params:
 
 # このPOCの位置づけ
 
-本書は、CURIEの **A1 オファーシート作成** を実際に実行し、入力・計算条件・結果・制約を確認するPOCである。
+本書は、Curieの **A1 オファーシート作成** を実際に実行し、入力・計算条件・結果・制約を確認するPOCである。
 コード例の紹介ではなく、既存のA1ワークフロー（`workflows_offer_sheet_JPY()`／`workflows_offer_sheet_ISO()`）と
 デモデータ生成関数をそのまま呼び出す。計算処理は本書の中で実装しない。
 
@@ -38,7 +38,7 @@ params:
 | データ | **すべて架空のテスト用データ**。実在の銘柄・市場価格ではない |
 | 表 | ワークフロー関数の戻り値から作る（出力Excelは読み直さない） |
 
-CURIE全体の中での位置づけ（`CURIE_Mockup_Overview.pdf`）：画面の「03 分析・レポート」から呼び出すRの処理のうち、
+Curie全体の中での位置づけ（`Curie_Mockup_Overview.pdf`）：画面の「03 分析・レポート」から呼び出すRの処理のうち、
 「01 オファーを計算・整理（市場レートとオファー価格から利回り・ASW等を計算）」に当たる。
 数値はRで確定し、AIによる要約（A3・A4）は確定した数値を変更しない。
 
@@ -48,45 +48,45 @@ CURIE全体の中での位置づけ（`CURIE_Mockup_Overview.pdf`）：画面の
 - 実際の入力ファイル（オファーExcel、OIS、JGB時価、FX、ベーシス）への対応・確認
 - ASW翌日物レッグの実取引条件の確定（本書では半年払い・支払ラグ0をデモの仮定として使う）
 
-# CURIEルートの解決
+# Curieルートの解決
 
-本書は置き場所や作業ディレクトリに依存しない。最初にCURIEのプロジェクトルート
-（`CURIE.Rproj` と `R/load_CURIE.R` があるフォルダ）を決め、読込・入力・作業ファイル・出力のパスは
+本書は置き場所や作業ディレクトリに依存しない。最初にCurieのプロジェクトルート
+（`Curie.Rproj` と `R/load_Curie.R` があるフォルダ）を決め、読込・入力・作業ファイル・出力のパスは
 すべてそのルートを基準に組み立てる。
 
 | 優先順位 | 指定方法 | 例 |
 |---|---|---|
-| 1 | Quarto の params `curie_root` | `quarto render A1_offer_sheet_POC.qmd -P curie_root:C:/AnalyticFin/Projects/CURIE` |
-| 2 | 環境変数 `CURIE_ROOT` | PowerShell：`$env:CURIE_ROOT = "C:/AnalyticFin/Projects/CURIE"` |
-| 3 | 本書（QMD）の場所から上位フォルダを探索 | CURIE内のどのフォルダに置いても見つかる |
-| 4 | 作業ディレクトリから上位フォルダを探索 | CURIE内で実行した場合 |
+| 1 | Quarto の params `curie_root` | `quarto render A1_offer_sheet_POC.qmd -P curie_root:C:/AnalyticFin/Projects/Curie` |
+| 2 | 環境変数 `Curie_ROOT` | PowerShell：`$env:Curie_ROOT = "C:/AnalyticFin/Projects/Curie"` |
+| 3 | 本書（QMD）の場所から上位フォルダを探索 | Curie内のどのフォルダに置いても見つかる |
+| 4 | 作業ディレクトリから上位フォルダを探索 | Curie内で実行した場合 |
 
-1・2 で指定したフォルダがCURIEルートでなければ、別の候補を探さずに停止する（指定の誤りを見逃さないため）。
+1・2 で指定したフォルダがCurieルートでなければ、別の候補を探さずに停止する（指定の誤りを見逃さないため）。
 どこにも見つからない場合も、指定方法を示して停止する。
 
 ```{r}
 #| label: resolve-root
 
-# params（Quarto）→ 環境変数 → QMDの場所の上位 → 作業ディレクトリの上位 の順にCURIEルートを決める
+# params（Quarto）→ 環境変数 → QMDの場所の上位 → 作業ディレクトリの上位 の順にCurieルートを決める
 param_value <- function(name) {
   value <- if (exists("params", inherits = TRUE)) params[[name]] else NULL
   if (is.null(value) || is.na(value) || !nzchar(value)) "" else as.character(value)
 }
 is_curie_root <- function(dir) {
-  file.exists(file.path(dir, "CURIE.Rproj")) && file.exists(file.path(dir, "R", "load_CURIE.R"))
+  file.exists(file.path(dir, "Curie.Rproj")) && file.exists(file.path(dir, "R", "load_Curie.R"))
 }
 ancestor_dirs <- function(dir) {
   dir <- normalizePath(dir, winslash = "/", mustWork = FALSE)
   unique(purrr::accumulate(seq_len(64), \(d, i) dirname(d), .init = dir))
 }
 resolve_curie_root <- function() {
-  explicit <- c("params curie_root" = param_value("curie_root"), "環境変数 CURIE_ROOT" = Sys.getenv("CURIE_ROOT"))
+  explicit <- c("params curie_root" = param_value("curie_root"), "環境変数 Curie_ROOT" = Sys.getenv("Curie_ROOT"))
   explicit <- explicit[nzchar(explicit)]
   if (length(explicit)) {
     root <- normalizePath(explicit[[1]], winslash = "/", mustWork = FALSE)
     if (!is_curie_root(root)) {
-      stop(names(explicit)[1], " で指定したフォルダはCURIEルートではありません: ", root,
-           "\nCURIE.Rproj と R/load_CURIE.R があるフォルダを指定してください。", call. = FALSE)
+      stop(names(explicit)[1], " で指定したフォルダはCurieルートではありません: ", root,
+           "\nCurie.Rproj と R/load_Curie.R があるフォルダを指定してください。", call. = FALSE)
     }
     return(list(root = root, method = names(explicit)[1]))
   }
@@ -98,9 +98,9 @@ resolve_curie_root <- function() {
     if (is.null(hit)) NULL else list(root = hit, method = how)
   }) |> purrr::compact()
   if (length(found)) return(found[[1]])
-  stop("CURIEルートが見つかりません。次のいずれかで指定してください。\n",
-       "  quarto render <QMD> -P curie_root:<CURIEのフォルダ>\n",
-       "  環境変数 CURIE_ROOT に <CURIEのフォルダ> を設定\n",
+  stop("Curieルートが見つかりません。次のいずれかで指定してください。\n",
+       "  quarto render <QMD> -P curie_root:<Curieのフォルダ>\n",
+       "  環境変数 Curie_ROOT に <Curieのフォルダ> を設定\n",
        "探索した起点: ", paste(starts, collapse = ", "), call. = FALSE)
 }
 
@@ -108,17 +108,17 @@ resolved <- resolve_curie_root()
 curie_root <- resolved$root
 curie_path <- function(...) file.path(curie_root, ...)
 
-# 既存コードはCURIEルートでの実行を前提に相対パスで読み込むため、
+# 既存コードはCurieルートでの実行を前提に相対パスで読み込むため、
 # 必要な処理の間だけ作業ディレクトリをルートへ切り替え、終了時に戻す
 in_curie <- function(expr) withr::with_dir(curie_root, expr)
 
-gaussquant_src <- c(param_value("gaussquant_src"), Sys.getenv("CURIE_GAUSSQUANT_SRC"),
+gaussquant_src <- c(param_value("gaussquant_src"), Sys.getenv("Curie_GAUSSQUANT_SRC"),
                     file.path(dirname(curie_root), "GaussQuant"))
 gaussquant_src <- gaussquant_src[nzchar(gaussquant_src)][1]
 demo_dir <- curie_path(param_value("demo_subdir"))
 out_dir <- curie_path(param_value("output_subdir"))
 
-cat("CURIEルート :", curie_root, "（", resolved$method, "）\n")
+cat("Curieルート :", curie_root, "（", resolved$method, "）\n")
 cat("デモ入力    :", demo_dir, "\n")
 cat("出力        :", out_dir, "\n")
 cat("GaussQuantソース（照合用）:", gaussquant_src, "\n")
@@ -127,23 +127,23 @@ cat("GaussQuantソース（照合用）:", gaussquant_src, "\n")
 レンダリングの例（HTMLは自己完結型で、QMDと同じフォルダに出力される）：
 
 ```powershell
-# CURIE内（docs/ のまま）
-quarto render C:/AnalyticFin/Projects/CURIE/docs/A1_offer_sheet_POC.qmd
+# Curie内（docs/ のまま）
+quarto render C:/AnalyticFin/Projects/Curie/docs/A1_offer_sheet_POC.qmd
 
-# CURIE内の別フォルダへ移動した場合（ルートは自動で見つかる）
-quarto render C:/AnalyticFin/Projects/CURIE/docs/poc/A1_offer_sheet_POC.qmd
+# Curie内の別フォルダへ移動した場合（ルートは自動で見つかる）
+quarto render C:/AnalyticFin/Projects/Curie/docs/poc/A1_offer_sheet_POC.qmd
 
-# CURIEの外へ移動した場合（params で指定）
-quarto render D:/work/A1_offer_sheet_POC.qmd -P curie_root:C:/AnalyticFin/Projects/CURIE
+# Curieの外へ移動した場合（params で指定）
+quarto render D:/work/A1_offer_sheet_POC.qmd -P curie_root:C:/AnalyticFin/Projects/Curie
 
-# CURIEの外へ移動した場合（環境変数で指定）
-$env:CURIE_ROOT = "C:/AnalyticFin/Projects/CURIE"
+# Curieの外へ移動した場合（環境変数で指定）
+$env:Curie_ROOT = "C:/AnalyticFin/Projects/Curie"
 quarto render D:/work/A1_offer_sheet_POC.qmd
 ```
 
-# 必要なパッケージとCURIEの読込
+# 必要なパッケージとCurieの読込
 
-CURIE本体の依存（tidyverse、writexl、collapse、QuantLib、GaussQuant）は `R/load_CURIE.R` が確認する。
+Curie本体の依存（tidyverse、writexl、collapse、QuantLib、GaussQuant）は `R/load_Curie.R` が確認する。
 本書の表示には、これに加えて flextable と withr を使う。
 
 ```{r}
@@ -153,7 +153,7 @@ report_packages <- c("flextable", "withr")
 missing_report <- report_packages[!purrr::map_lgl(report_packages, requireNamespace, quietly = TRUE)]
 if (length(missing_report)) stop("表示に必要なパッケージがありません: ", paste(missing_report, collapse = ", "), call. = FALSE)
 
-in_curie(source(curie_path("R", "load_CURIE.R"), encoding = "UTF-8"))
+in_curie(source(curie_path("R", "load_Curie.R"), encoding = "UTF-8"))
 in_curie(source(curie_path("scripts", "demo_data", "prepare_demo_inputs.R"), encoding = "UTF-8"))
 suppressPackageStartupMessages(library(dplyr))
 ```
@@ -161,7 +161,7 @@ suppressPackageStartupMessages(library(dplyr))
 # デモ入力データの生成
 
 `scripts/demo_data/` のデモデータ生成関数で、架空のオファーExcel（JPY／ISO）、銘柄属性、市場データを作る。
-生成先はCURIEルート配下の `r params$demo_subdir` で、既存デモ（`data/demo`）とは分ける。
+生成先はCurieルート配下の `r params$demo_subdir` で、既存デモ（`data/demo`）とは分ける。
 
 | デモの銘柄 | JPY側 | ISO側 |
 |---|---|---|
@@ -171,7 +171,7 @@ suppressPackageStartupMessages(library(dplyr))
 ```{r}
 #| label: demo-inputs
 
-demo <- in_curie(prepare_demo_inputs_CURIE(dir = demo_dir))
+demo <- in_curie(prepare_demo_inputs_Curie(dir = demo_dir))
 input_files <- c(
   "JPYオファーExcel" = demo$offer_jpy, "ISOオファーExcel" = demo$offer_iso,
   "OIS（JPY）" = demo$ois_jpy, "OIS（USD）" = demo$ois_usd, "OIS（EUR）" = demo$ois_eur,
@@ -185,8 +185,8 @@ tibble::tibble(
   ファイル = sub(paste0("^", curie_root, "/"), "", normalizePath(input_files, winslash = "/")),
   使うワークフロー = c("JPY", "ISO", "JPY・ISO", "ISO", "ISO", "JPY", "ISO", "ISO")
 ) |>
-  flextable_CURIE(widths = c(入力 = 1.6, ファイル = 4.4, 使うワークフロー = 1.2),
-                  caption = "デモ入力ファイル（CURIEルートからの相対パス）")
+  flextable_Curie(widths = c(入力 = 1.6, ファイル = 4.4, 使うワークフロー = 1.2),
+                  caption = "デモ入力ファイル（Curieルートからの相対パス）")
 ```
 
 # JPYワークフローの実行
@@ -205,7 +205,7 @@ jpy <- in_curie(workflows_offer_sheet_JPY(
   valuation_date = demo$marketdate,
   output_path = file.path(out_dir, "offer_results_JPY_poc.xlsx"),
   attribute_fetcher = demo$attribute_fetcher,
-  offer_settings = offer_import_settings_CURIE(sheet = "円債オファー", currency = "JPY"),
+  offer_settings = offer_import_settings_Curie(sheet = "円債オファー", currency = "JPY"),
   work_dir = file.path(out_dir, "work", "JPY"),
   gaussquant_src = gaussquant_src
 ))
@@ -215,12 +215,12 @@ jpy <- in_curie(workflows_offer_sheet_JPY(
 
 ```{r}
 #| label: jpy-conditions
-a1_conditions_table_CURIE(jpy, "JPY")
+a1_conditions_table_Curie(jpy, "JPY")
 ```
 
 ```{r}
 #| label: jpy-summary
-a1_status_summary_table_CURIE(jpy, "JPY")
+a1_status_summary_table_Curie(jpy, "JPY")
 ```
 
 ## 計算結果
@@ -230,12 +230,12 @@ JGBスプレッドは（対象債の複利利回り − 同じ償還日に補間
 
 ```{r}
 #| label: jpy-results
-a1_jpy_results_table_CURIE(jpy)
+a1_jpy_results_table_Curie(jpy)
 ```
 
 ```{r}
 #| label: jpy-exceptions
-a1_exceptions_table_CURIE(jpy, "JPY")
+a1_exceptions_table_Curie(jpy, "JPY")
 ```
 
 # ISOワークフローの実行
@@ -263,12 +263,12 @@ iso <- in_curie(workflows_offer_sheet_ISO(
 
 ```{r}
 #| label: iso-conditions
-a1_conditions_table_CURIE(iso, "ISO")
+a1_conditions_table_Curie(iso, "ISO")
 ```
 
 ```{r}
 #| label: iso-summary
-a1_status_summary_table_CURIE(iso, "ISO")
+a1_status_summary_table_Curie(iso, "ISO")
 ```
 
 ## 計算結果
@@ -277,12 +277,12 @@ a1_status_summary_table_CURIE(iso, "ISO")
 
 ```{r}
 #| label: iso-results
-a1_iso_results_table_CURIE(iso)
+a1_iso_results_table_Curie(iso)
 ```
 
 ```{r}
 #| label: iso-exceptions
-a1_exceptions_table_CURIE(iso, "ISO")
+a1_exceptions_table_Curie(iso, "ISO")
 ```
 
 # 検証明細
@@ -293,8 +293,8 @@ a1_exceptions_table_CURIE(iso, "ISO")
 
 ```{r}
 #| label: curve-check
-a1_curve_check_table_CURIE(jpy, "JPY")
-a1_curve_check_table_CURIE(iso, "ISO")
+a1_curve_check_table_Curie(jpy, "JPY")
+a1_curve_check_table_Curie(iso, "ISO")
 ```
 
 ## JGB：単価から計算した複利利回りと補間
@@ -306,12 +306,12 @@ JGB単価の受渡日がオファーの受渡日と違う場合（例：T+1とT+
 
 ```{r}
 #| label: jgb-yields
-a1_jgb_yields_table_CURIE(jpy)
+a1_jgb_yields_table_Curie(jpy)
 ```
 
 ```{r}
 #| label: jgb-interpolation
-a1_jgb_interpolation_table_CURIE(jpy)
+a1_jgb_interpolation_table_Curie(jpy)
 ```
 
 ## 通貨ベーシスの平均と補間
@@ -322,14 +322,14 @@ CCSカーブ全体のブートストラップではない。
 
 ```{r}
 #| label: basis
-a1_basis_table_CURIE(iso)
+a1_basis_table_Curie(iso)
 ```
 
 ## 円換算ASWの残差
 
 ```{r}
 #| label: iso-residual
-a1_iso_residual_table_CURIE(iso)
+a1_iso_residual_table_Curie(iso)
 ```
 
 ## 元の入力ファイルを上書きしていないこと
@@ -345,7 +345,7 @@ tibble::tibble(
     normalizePath(input_files, winslash = "/") %in% normalizePath(c(jpy$output_path, iso$output_path), winslash = "/", mustWork = FALSE),
     "同じ（要確認）", "別ファイル")
 ) |>
-  flextable_CURIE(widths = c(入力 = 1.6, 実行前後のハッシュ = 1.8, 出力先と同じか = 1.6),
+  flextable_Curie(widths = c(入力 = 1.6, 実行前後のハッシュ = 1.8, 出力先と同じか = 1.6),
                   caption = "入力ファイルの保全（出力Excelは別ファイル）")
 stopifnot(all(input_md5_before == input_md5_after))
 
@@ -384,7 +384,7 @@ saveRDS(list(jpy = jpy$results, iso = iso$results), file.path(out_dir, "poc_resu
 | 評価日 | オファー日＝各市場データの市場日。不一致・不足は別の日付で補わない |
 | 受渡日 | 既存ASW関数は債券の受渡日を開始日とするため、オファー受渡日と一致した行だけ計算 |
 | 計算終期 | 最終償還日（固定利付・満期一括・償還額100） |
-| ASW翌日物レッグ | 半年払い・支払ラグ0（**デモの仮定**。`pricing_settings_CURIE()` で変更可） |
+| ASW翌日物レッグ | 半年払い・支払ラグ0（**デモの仮定**。`pricing_settings_Curie()` で変更可） |
 | JGB複利利回り | クリーン単価、同じ受渡日、利払・複利とも年2回。残存年数は満年数＋端数ACT/365 |
 
 ## 円換算ASWの簡易モデルの制約
@@ -402,9 +402,9 @@ MtMリセット型CCS、FXスポットの受渡日とASW開始日がずれる場
 | 引数 | JPY | ISO | 差し替える内容 |
 |---|:-:|:-:|---|
 | `offer_path` | ○ | ○ | 実際のオファーExcel（JPYとISOは別ファイル） |
-| `offer_settings` | ○ | ○ | `offer_import_settings_CURIE(sheet =, header_row =, column_map =, currency =)` |
+| `offer_settings` | ○ | ○ | `offer_import_settings_Curie(sheet =, header_row =, column_map =, currency =)` |
 | `ois_path` ／ `ois_paths` | ○ | ○ | OISのテキストファイル（ISOは通貨ごとに複数可。JPYのOISも渡す） |
-| `ois_settings` | ○ | ○ | `text_import_settings_CURIE(delim =, encoding =, column_map =)` |
+| `ois_settings` | ○ | ○ | `text_import_settings_Curie(delim =, encoding =, column_map =)` |
 | `jgb_path` ／ `jgb_settings` | ○ | | JGB時価ファイル（単価と利回り計算に必要な属性） |
 | `basis_path` ／ `basis_settings` | | ○ | 対JPY通貨ベーシスの市場データ |
 | `fx_path` ／ `fx_settings` | | ○ | FXスポット（外貨1単位当たりの円） |
@@ -421,14 +421,14 @@ MtMリセット型CCS、FXスポットの受渡日とASW開始日がずれる場
 #| label: environment
 jpy$environment$environment |>
   dplyr::transmute(項目 = .data$item, 値 = .data$value, 備考 = .data$note) |>
-  flextable_CURIE(widths = c(項目 = 2, 値 = 2.8, 備考 = 3.6), caption = "使用したR・パッケージの版")
+  flextable_Curie(widths = c(項目 = 2, 値 = 2.8, 備考 = 3.6), caption = "使用したR・パッケージの版")
 
 jpy$environment$gaussquant_check |>
   dplyr::summarise(関数の数 = dplyr::n(), ソース版と一致 = sum(.data$identical)) |>
   dplyr::mutate(dplyr::across(dplyr::everything(), as.character)) |>
-  flextable_CURIE(caption = "GaussQuant：使用関数のインストール済み版とソース版の照合")
+  flextable_Curie(caption = "GaussQuant：使用関数のインストール済み版とソース版の照合")
 ```
 
-参考資料：`LagrangeFinance/docs/CURIE_Mockup_Overview.pdf`（全体像）、
+参考資料：`LagrangeFinance/docs/Curie_Mockup_Overview.pdf`（全体像）、
 `LagrangeFinance/docs/asw_offer_sheet_spec.qmd`（ASW・オファーシートの仕様）、
-CURIEの `docs/development_plan.md`、`docs/spec_differences.md`。
+Curieの `docs/development_plan.md`、`docs/spec_differences.md`。

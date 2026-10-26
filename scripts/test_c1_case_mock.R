@@ -3,10 +3,10 @@
 #         Content-Type と中身の食い違い、HTML の Windows-1252 と &#147;、追跡用パラメータの除去
 #   Claude：失敗（終了コード）、タイムアウト、古い成果物を使わない、読めなかった、回答形式不正
 #   検証：引用の改ざん、記載ありなのに引用なし、FpML の値の違い・部分一致・別レッグの値、公式XSD 適合時の最終版
-# CURIEプロジェクトの最上位フォルダで実行する。データはすべて架空（scripts/demo_data/demo_trs_terms.R）。
+# Curieプロジェクトの最上位フォルダで実行する。データはすべて架空（scripts/demo_data/demo_trs_terms.R）。
 
-if (!file.exists("CURIE.Rproj")) stop("CURIEプロジェクトの最上位フォルダで実行してください。")
-source("R/load_CURIE.R", encoding = "UTF-8")
+if (!file.exists("Curie.Rproj")) stop("Curieプロジェクトの最上位フォルダで実行してください。")
+source("R/load_Curie.R", encoding = "UTF-8")
 source("scripts/demo_data/demo_trs_terms.R", encoding = "UTF-8")
 suppressPackageStartupMessages(library(dplyr))
 
@@ -153,7 +153,7 @@ stale <- run_claude_c1(stale_dir, list(kind = "html"), cmd = rscript,
                        args = c("-e", "writeLines('{}', 'reviewed.json'); quit(status = 2)"), timeout_sec = 10)
 results <- dplyr::bind_rows(results,
   check("追跡用パラメータを除いて取得元を記録", identical(man(i_of("URL 200（PDF）"))$source, "https://mock.example/ok.pdf")),
-  check("User-Agent を CURIE_HTTP_USER_AGENT から付ける", identical(last_ua, Sys.getenv("CURIE_HTTP_USER_AGENT", "CURIE-c1 (TRS terms reader)")) || nzchar(last_ua)),
+  check("User-Agent を Curie_HTTP_USER_AGENT から付ける", identical(last_ua, Sys.getenv("Curie_HTTP_USER_AGENT", "Curie-c1 (TRS terms reader)")) || nzchar(last_ua)),
   check("中身と Content-Type の食い違いを記録", nzchar(man(i_of("URL 200（中身は PDF、型は別）"))$acquisition$format$note)),
   check("HTML の文字コードを記録（Windows-1252）", identical(man(i_of("URL 200（HTML・Windows-1252）"))$acquisition$encoding, "windows-1252")),
   check("403 の理由に「回避しない」を表示", grepl("HTTP 403.*回避はしません", man(i_of("URL 403"))$failure$message)),
@@ -185,19 +185,19 @@ results <- dplyr::bind_rows(results,
   check("Aladdin：スプレッド（原文 0.35% → 35 bp）を単位どおりに換算して記録（bp 35／decimal 0.0035／percent 0.35）", local({
     cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")))))$conditions
     by_unit <- purrr::map(c(bp = "bp", decimal = "decimal", percent = "percent"),
-                          \(u) build_aladdin_trs_payload_c1(cond, list(our_party_names = list("CURIE Demo Fund"), spread_unit = u)))
+                          \(u) build_aladdin_trs_payload_c1(cond, list(our_party_names = list("Curie Demo Fund"), spread_unit = u)))
     vals <- purrr::map_dbl(by_unit, \(b) b$payload$swapInfo$payLeg$spread)
     isTRUE(all.equal(unname(vals), c(35, 0.0035, 0.35))) && identical(by_unit$decimal$conversions$条件の値, "35 bp") &&
       identical(by_unit$decimal$conversions$Aladdin_の値, "0.0035")
   })),
   check("Aladdin：想定元本は格納先を推測せず未確定にする", local({
     cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")))))$conditions
-    u <- build_aladdin_trs_payload_c1(cond, list(our_party_names = list("CURIE Demo Fund")))$unresolved
+    u <- build_aladdin_trs_payload_c1(cond, list(our_party_names = list("Curie Demo Fund")))$unresolved
     any(grepl("格納先が未確認", u$理由) & u$条件 == "trade.notional_amount")
   })),
   check("Aladdin：対応表（テスト用の架空コード）があれば、日付・スプレッド・ルックバック・カレンダーを正しいレッグに入れる", local({
     cond <- validate_c1_case(read_c1_case_results(file.path(root, "cases", sprintf("mock_%02d", i_of("成功（ローカルPDF）")))))$conditions
-    m <- list(our_party_names = list("CURIE Demo Fund"), spread_unit = "decimal", calendar_codes = list(JPTO = "TEST-TOKYO"))
+    m <- list(our_party_names = list("Curie Demo Fund"), spread_unit = "decimal", calendar_codes = list(JPTO = "TEST-TOKYO"))
     p <- build_aladdin_trs_payload_c1(cond, m)$payload
     identical(p$swapInfo$recLeg$startDate, "2026-10-08") && identical(p$swapInfo$payLeg$spread, 0.0035) &&
       identical(p$swapInfo$payLegPaymentReset$lookback, 5L) &&

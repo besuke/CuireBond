@@ -11,10 +11,10 @@
 #   - 入れられなかった項目は JSON に含めず、「未確定」として理由つきで返す（見本の "string" や *_UNSPECIFIED は入れない）
 #
 # 対応表（aladdin_map）：config/aladdin_map_example.json の形（JSON）。埋めたものは tmp/aladdin_map.json など Git 管理対象外に置き、
-# 環境変数 CURIE_ALADDIN_MAP（tmp/.Renviron）でその場所を指定する
+# 環境変数 Curie_ALADDIN_MAP（tmp/.Renviron）でその場所を指定する
 
 # 対応表を読む（なければ空。すべての Aladdin のコード・列挙値・向きが未確定になる）
-read_aladdin_map_c1 <- function(path = Sys.getenv("CURIE_ALADDIN_MAP", "")) {
+read_aladdin_map_c1 <- function(path = Sys.getenv("Curie_ALADDIN_MAP", "")) {
   if (!nzchar(path) || !file.exists(path)) return(list())
   jsonlite::fromJSON(path, simplifyVector = FALSE)
 }
@@ -151,9 +151,9 @@ write_aladdin_draft_c1 <- function(case, aladdin_map = read_aladdin_map_c1(), en
   n <- nrow(built$unresolved)
   jsonlite::write_json(list(
     status = if (n) paste0("下書き（未送信）：未確定 ", n, " 項目") else "下書き（未送信）：未確定なし",
-    note = "Aladdin へは送信していない。CURIE は payload の生成まで（テスト環境か本番環境か未確認、認証情報は未提供）",
+    note = "Aladdin へは送信していない。Curie は payload の生成まで（テスト環境か本番環境か未確認、認証情報は未提供）",
     endpoint = endpoint, request_file = basename(path), request_sha256 = pdf_sha256_c1(path),
-    mapping_file = Sys.getenv("CURIE_ALADDIN_MAP", "（未設定：Aladdin のコード・列挙値・単位・自社の向きはすべて未確定）"),
+    mapping_file = Sys.getenv("Curie_ALADDIN_MAP", "（未設定：Aladdin のコード・列挙値・単位・自社の向きはすべて未確定）"),
     side = built$side, conversions = built$conversions, unresolved = built$unresolved),
     file.path(dir, "aladdin_unresolved.json"), auto_unbox = TRUE, pretty = TRUE, null = "null", digits = NA)
   list(path = path, unresolved = built$unresolved, conversions = built$conversions, payload = built$payload)

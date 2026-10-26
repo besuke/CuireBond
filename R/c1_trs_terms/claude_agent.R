@@ -15,7 +15,7 @@
 
 claude_prompt_c1 <- function(document) {
   paste(c(
-    "# CURIE c1：TRS 確認書の読解と FpML 作成",
+    "# Curie c1：TRS 確認書の読解と FpML 作成",
     "",
     paste0("このフォルダの `", document$local_name, "`（原文）と `instructions.md`（抽出指示）を読んでください。"),
     "すべての項目を原文から読み取り、値・根拠ページ・原文の引用を記録すること。推測で補わないこと。",
@@ -42,19 +42,19 @@ claude_prompt_c1 <- function(document) {
   ), collapse = "\n")
 }
 
-# poppler（pdftoppm）のフォルダを探す：環境変数 CURIE_POPPLER_BIN → PATH → winget の導入先
+# poppler（pdftoppm）のフォルダを探す：環境変数 Curie_POPPLER_BIN → PATH → winget の導入先
 .poppler_bin_c1 <- function() {
   on_path <- Sys.which("pdftoppm")
   if (nzchar(on_path)) return(dirname(on_path))
   winget <- Sys.glob(file.path(Sys.getenv("LOCALAPPDATA"), "Microsoft", "WinGet", "Packages", "oschwartz10612.Poppler*",
                                "poppler-*", "Library", "bin"))
-  candidates <- c(Sys.getenv("CURIE_POPPLER_BIN", ""), winget)
+  candidates <- c(Sys.getenv("Curie_POPPLER_BIN", ""), winget)
   purrr::detect(candidates, \(d) nzchar(d) && file.exists(file.path(d, "pdftoppm.exe"))) %||% NA_character_
 }
 
-# Claude Code の実行ファイル（環境変数 CURIE_CLAUDE_CMD で指定できる）
+# Claude Code の実行ファイル（環境変数 Curie_CLAUDE_CMD で指定できる）
 claude_command_c1 <- function() {
-  cmd <- Sys.getenv("CURIE_CLAUDE_CMD", "")
+  cmd <- Sys.getenv("Curie_CLAUDE_CMD", "")
   if (nzchar(cmd)) return(cmd)
   found <- Sys.which("claude")
   if (nzchar(found)) return(unname(found))
@@ -82,12 +82,12 @@ prepare_claude_workdir_c1 <- function(agent_dir, document, source_path, instruct
 # Claude Code を実行する。結果：state（ok／failed／timeout）と記録（終了コード・秒数・費用の目安など）
 # cmd・args はテストで差し替えられる（既定は claude -p ...）
 run_claude_c1 <- function(agent_dir, document, cmd = claude_command_c1(), args = claude_args_c1(document),
-                          timeout_sec = as.numeric(Sys.getenv("CURIE_CLAUDE_TIMEOUT_SEC", "1800"))) {
+                          timeout_sec = as.numeric(Sys.getenv("Curie_CLAUDE_TIMEOUT_SEC", "1800"))) {
   unlink(file.path(agent_dir, .claude_outputs_c1))   # 古い結果を成功結果として使わない
   log <- list(mode = "api", command = basename(cmd %||% ""), timeout_sec = timeout_sec,
               started_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"))
   if (is.na(cmd) || !nzchar(cmd)) {
-    return(list(state = "failed", log = c(log, error = "Claude Code（claude）が見つかりません。CURIE_CLAUDE_CMD で指定できます")))
+    return(list(state = "failed", log = c(log, error = "Claude Code（claude）が見つかりません。Curie_CLAUDE_CMD で指定できます")))
   }
   env <- "current"
   if (identical(document$kind, "pdf")) {

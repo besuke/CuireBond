@@ -196,7 +196,7 @@
 }
 
 # ---- 検証の本体 -----------------------------------------------------------------------------
-validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""), dictionary = trs_field_dictionary_c1()) {
+validate_c1_case <- function(results, xsd_path = Sys.getenv("Curie_FPML_XSD", ""), dictionary = trs_field_dictionary_c1()) {
   m <- results$manifest
   modes <- c(claude = m$claude_mode %||% NA_character_)
   f <- results$failure

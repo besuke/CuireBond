@@ -13,7 +13,7 @@
       "Effective Date: 2026-10-08",
       "Termination Date: 2027-10-08",
       "Notional Amount: JPY 1,000,000,000",
-      "Total Return Receiver: CURIE Demo Fund",
+      "Total Return Receiver: Curie Demo Fund",
       "Total Return Payer: DEMO Securities Co., Ltd.",
       "Calculation Agent: DEMO Securities Co., Ltd.",
       "Definitions: 2021 ISDA Interest Rate Derivatives Definitions",
@@ -79,7 +79,7 @@ write_demo_trs_pdf_c1 <- function(dir) {
     "trade.termination_date",                  "2027-10-08",                             "stated",      1L,    "Termination Date: 2027-10-08",
     "trade.notional_amount",                   "1000000000",                             "stated",      1L,    "Notional Amount: JPY 1,000,000,000",
     "trade.notional_currency",                 "JPY",                                    "stated",      1L,    "Notional Amount: JPY 1,000,000,000",
-    "trade.total_return_receiver",             "CURIE Demo Fund",                        "stated",      1L,    "Total Return Receiver: CURIE Demo Fund",
+    "trade.total_return_receiver",             "Curie Demo Fund",                        "stated",      1L,    "Total Return Receiver: Curie Demo Fund",
     "trade.total_return_payer",                "DEMO Securities Co., Ltd.",              "stated",      1L,    "Total Return Payer: DEMO Securities Co., Ltd.",
     "trade.calculation_agent",                 "DEMO Securities Co., Ltd.",              "stated",      1L,    "Calculation Agent: DEMO Securities Co., Ltd.",
     "trade.isda_definitions",                  "2021 ISDA Interest Rate Derivatives Definitions", "stated", 1L, "Definitions: 2021 ISDA Interest Rate Derivatives Definitions",
@@ -144,9 +144,9 @@ write_demo_trs_html_c1 <- function(dir) {
 # HTML を PDF に印刷する（Chrome／Edge のヘッドレス印刷。画像だけの PDF を作るためだけに使う）
 # processx で起動し、時間内に終わらなければ止める（ヘッドレスのブラウザが止まったままになることがあるため）
 .html_to_pdf_demo_c1 <- function(html_path, pdf_path, timeout_sec = 120) {
-  browser <- purrr::keep(c(Sys.getenv("CURIE_CHROME", ""), "C:/Program Files/Google/Chrome/Application/chrome.exe",
+  browser <- purrr::keep(c(Sys.getenv("Curie_CHROME", ""), "C:/Program Files/Google/Chrome/Application/chrome.exe",
                            "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"), \(p) nzchar(p) && file.exists(p))
-  if (!length(browser)) stop("HTMLをPDFへ変換するブラウザ（Chrome／Edge）が見つかりません。CURIE_CHROME で指定してください。", call. = FALSE)
+  if (!length(browser)) stop("HTMLをPDFへ変換するブラウザ（Chrome／Edge）が見つかりません。Curie_CHROME で指定してください。", call. = FALSE)
   profile <- tempfile("curie_browser_")
   on.exit(unlink(profile, recursive = TRUE), add = TRUE)
   res <- processx::run(browser[[1]], c("--headless=new", "--disable-gpu", "--no-pdf-header-footer", paste0("--user-data-dir=", profile),

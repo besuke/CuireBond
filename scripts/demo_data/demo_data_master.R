@@ -2,9 +2,9 @@
 # 属性取得関数の約束は R/z0_utility/attributes.R：function(ISIN, valuation_date) -> 1銘柄1行の tibble。
 # ISINと銘柄はすべて架空のテスト用で、実在しない。
 
-create_demo_attributes_CURIE <- function(dir, marketdate = demo_marketdate_CURIE) {
+create_demo_attributes_Curie <- function(dir, marketdate = demo_marketdate_Curie) {
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
-  attributes <- demo_bonds_CURIE() |>
+  attributes <- demo_bonds_Curie() |>
     dplyr::mutate(
       attribute_date = marketdate,
       issuer_name = "架空発行体（テスト用）",
@@ -22,7 +22,7 @@ create_demo_attributes_CURIE <- function(dir, marketdate = demo_marketdate_CURIE
 
 # デモの属性取得関数を作る。RDSから、指定ISIN・評価日と同じ属性日の行を返す。
 # 見つからないISINは返さない（ワークフロー側で missing_bond_attributes になる）。
-make_demo_attribute_fetcher_CURIE <- function(path) {
+make_demo_attribute_fetcher_Curie <- function(path) {
   force(path)
   function(isin, valuation_date) {
     readRDS(path) |>

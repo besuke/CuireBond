@@ -2,14 +2,14 @@
 # ここで定義する銘柄・価格・市場気配はすべて架空のテスト用データであり、
 # 実在の銘柄・発行体・市場価格とは関係がない。
 
-demo_marketdate_CURIE <- as.Date("2026-10-06")
+demo_marketdate_Curie <- as.Date("2026-10-06")
 
-make_test_isin_CURIE <- function(body) paste0(toupper(body), isin_check_digit_CURIE(body))
+make_test_isin_Curie <- function(body) paste0(toupper(body), isin_check_digit_Curie(body))
 
 # 債券生成の規約（通貨別）。LagrangeFinance のサンプル（sample_bond_asset_swap.R）と同じ値。
 # day_count は GaussQuant::day_counter_GQL() の名前（ActualActual_Bond は ISMA と同じ規約）。
-# calendar は R/a1_offer_sheet/compute_offer_pricing.R の calendar_from_name_CURIE() の名前。
-demo_bond_conventions_CURIE <- function() {
+# calendar は R/a1_offer_sheet/compute_offer_pricing.R の calendar_from_name_Curie() の名前。
+demo_bond_conventions_Curie <- function() {
   tibble::tribble(
     ~currency, ~day_count,            ~calendar,                     ~settlement_days,
     "JPY",     "Actual365Fixed",      "Japan",                       2L,
@@ -26,7 +26,7 @@ demo_bond_conventions_CURIE <- function() {
 # ISINは「TEST」を含む架空コードで、チェックディジットだけは規則どおりに計算する。
 # - JPY側：円債4銘柄＋ユーロ円債1銘柄（建て通貨JPY）＋変動利付1銘柄（未対応の確認用）
 # - ISO側：USD 3銘柄・EUR 2銘柄＋コーラブル1銘柄（未対応の確認用）
-demo_bonds_CURIE <- function() {
+demo_bonds_Curie <- function() {
   tibble::tribble(
     ~isin_body,    ~security_name,                    ~currency, ~coupon_type, ~coupon_rate, ~coupon_frequency, ~issue_date,  ~issue_price, ~maturity_date, ~floating_index, ~floating_spread_bp, ~reset_frequency, ~first_call_date, ~call_price,
     "JPTEST00001", "テスト円債A 0.50% 2028/9",        "JPY",     "FIXED",      0.0050,       2L,                "2023-09-20", 99.95,        "2028-09-20",   NA,              NA,                  NA,               NA,               NA,
@@ -43,7 +43,7 @@ demo_bonds_CURIE <- function() {
     "USTESTCAL01", "TEST USD CALLABLE K 5.50% 2036",  "USD",     "FIXED",      0.0550,       2L,                "2026-03-01", 100.00,       "2036-03-01",   NA,              NA,                  NA,               "2031-03-01",     100
   ) |>
     dplyr::mutate(
-      ISIN = make_test_isin_CURIE(.data$isin_body),
+      ISIN = make_test_isin_Curie(.data$isin_body),
       dplyr::across(c("issue_date", "maturity_date", "first_call_date"), as.Date),
       floating_index = as.character(.data$floating_index),
       reset_frequency = as.character(.data$reset_frequency),
@@ -52,11 +52,11 @@ demo_bonds_CURIE <- function() {
       .before = 1
     ) |>
     dplyr::select(-"isin_body") |>
-    dplyr::left_join(demo_bond_conventions_CURIE(), by = "currency")
+    dplyr::left_join(demo_bond_conventions_Curie(), by = "currency")
 }
 
 # 架空のJGB（比較用国債）。単価は scripts/demo_data/demo_data_market.R で生成する。
-demo_jgbs_CURIE <- function() {
+demo_jgbs_Curie <- function() {
   tibble::tribble(
     ~isin_body,    ~security_name,           ~coupon_rate, ~issue_date,  ~maturity_date,
     "JPTESTJGB01", "テスト国債 2年 0.80%",   0.0080,       "2025-10-01", "2027-10-01",
@@ -70,7 +70,7 @@ demo_jgbs_CURIE <- function() {
     "JPTESTJGB08", "テスト国債 20年 0.90%",  0.0090,       "2013-06-20", "2033-06-20"
   ) |>
     dplyr::mutate(
-      ISIN = make_test_isin_CURIE(.data$isin_body), currency = "JPY", coupon_frequency = 2L,
+      ISIN = make_test_isin_Curie(.data$isin_body), currency = "JPY", coupon_frequency = 2L,
       issue_date = as.Date(.data$issue_date), maturity_date = as.Date(.data$maturity_date),
       redemption = 100, .before = 1
     ) |>
@@ -80,7 +80,7 @@ demo_jgbs_CURIE <- function() {
 # 文字の表（1行目から順にExcelの行になる）をそのまま書き出すための変換。
 # writexl は列ごとに型を1つしか持てないため、見出しより上の説明行を置くシートは
 # すべて文字列セルで書く。数値・日付の正規化は変換関数側の責務とする。
-rows_to_sheet_CURIE <- function(rows) {
+rows_to_sheet_Curie <- function(rows) {
   width <- max(lengths(rows))
   rows |>
     purrr::map(function(r) c(r, rep(NA_character_, width - length(r)))) |>
@@ -89,6 +89,6 @@ rows_to_sheet_CURIE <- function(rows) {
 }
 
 # 説明用シート（1行目が「項目・内容」の見出し、2行目以降が説明）
-description_sheet_CURIE <- function(items) {
-  rows_to_sheet_CURIE(c(list(c("項目", "内容")), purrr::imap(items, function(v, k) c(k, v))))
+description_sheet_Curie <- function(items) {
+  rows_to_sheet_Curie(c(list(c("項目", "内容")), purrr::imap(items, function(v, k) c(k, v))))
 }

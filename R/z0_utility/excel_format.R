@@ -1,4 +1,4 @@
-# CURIEが作るExcelの共通書式（フォント）。
+# Curieが作るExcelの共通書式（フォント）。
 #   英字・数字（ラテン文字・記号）：Cambria
 #   日本語（ひらがな・カタカナ・漢字・全角記号）：MS UI Gothic
 #
@@ -12,18 +12,18 @@
 #   3. zip で固め直す
 # 見出し行の太字は使わない（太字のセルとリッチテキストが混在すると書式がずれるため）。
 
-.excel_fonts_CURIE <- list(latin = "Cambria", japanese = "MS UI Gothic", size = 11)
+.excel_fonts_Curie <- list(latin = "Cambria", japanese = "MS UI Gothic", size = 11)
 
 # 日本語として扱う文字（CJK記号・かな・漢字・全角形）
-.japanese_char_pattern_CURIE <- "[　-ヿ㐀-䶿一-鿿豈-﫿＀-￯]"
+.japanese_char_pattern_Curie <- "[　-ヿ㐀-䶿一-鿿豈-﫿＀-￯]"
 
 # 文字列を、英数字の区間と日本語の区間に分ける。
 # 空白（スペース・タブ・改行）は前の区間に含め、先頭の空白は次の区間に含める
 # （空白だけの区間は readxl が読み飛ばし、空白が消えるため）
-split_by_script_CURIE <- function(x) {
+split_by_script_Curie <- function(x) {
   chars <- strsplit(x, "")[[1]]
   if (!length(chars)) return(tibble::tibble(text = character(), japanese = logical()))
-  jp <- dplyr::if_else(grepl("^\\s$", chars), NA, grepl(.japanese_char_pattern_CURIE, chars))
+  jp <- dplyr::if_else(grepl("^\\s$", chars), NA, grepl(.japanese_char_pattern_Curie, chars))
   if (all(is.na(jp))) jp[] <- FALSE
   jp <- tidyr::fill(tibble::tibble(jp = jp), "jp", .direction = "downup")$jp
   run <- cumsum(c(TRUE, jp[-1] != jp[-length(jp)]))
@@ -33,7 +33,7 @@ split_by_script_CURIE <- function(x) {
 }
 
 # styles.xml：すべてのフォントを Cambria に（テーマのフォント指定 scheme は外す）
-.set_style_fonts_CURIE <- function(path, latin) {
+.set_style_fonts_Curie <- function(path, latin) {
   doc <- xml2::read_xml(path)
   ns <- xml2::xml_ns(doc)
   fonts <- xml2::xml_find_all(doc, "//d1:fonts/d1:font", ns)
@@ -49,15 +49,15 @@ split_by_script_CURIE <- function(x) {
 }
 
 # sharedStrings.xml：日本語を含む文字列を、文字種ごとのフォントの区間に分ける
-.set_string_fonts_CURIE <- function(path, fonts) {
+.set_string_fonts_Curie <- function(path, fonts) {
   doc <- xml2::read_xml(path)
   ns <- xml2::xml_ns(doc)
   items <- xml2::xml_find_all(doc, "//d1:si", ns)
   purrr::walk(items, function(si) {
     text <- paste(xml2::xml_text(xml2::xml_find_all(si, ".//d1:t", ns)), collapse = "")
-    if (!grepl(.japanese_char_pattern_CURIE, text)) return(invisible(NULL))
+    if (!grepl(.japanese_char_pattern_Curie, text)) return(invisible(NULL))
     xml2::xml_remove(xml2::xml_children(si))
-    runs <- split_by_script_CURIE(text)
+    runs <- split_by_script_Curie(text)
     purrr::pwalk(runs, function(text, japanese) {
       r <- xml2::xml_add_child(si, "r")
       pr <- xml2::xml_add_child(r, "rPr")
@@ -71,16 +71,16 @@ split_by_script_CURIE <- function(x) {
   xml2::write_xml(doc, path, options = "as_xml")   # 字下げの空白を入れない
 }
 
-# 既存のxlsxにCURIEのフォントを適用する（上書き）
-apply_excel_fonts_CURIE <- function(path, fonts = .excel_fonts_CURIE) {
+# 既存のxlsxにCurieのフォントを適用する（上書き）
+apply_excel_fonts_Curie <- function(path, fonts = .excel_fonts_Curie) {
   work <- tempfile("xlsx_")
   dir.create(work)
   on.exit(unlink(work, recursive = TRUE), add = TRUE)
   utils::unzip(path, exdir = work)
   styles <- file.path(work, "xl", "styles.xml")
   strings <- file.path(work, "xl", "sharedStrings.xml")
-  if (file.exists(styles)) .set_style_fonts_CURIE(styles, fonts$latin)
-  if (file.exists(strings)) .set_string_fonts_CURIE(strings, fonts)
+  if (file.exists(styles)) .set_style_fonts_Curie(styles, fonts$latin)
+  if (file.exists(strings)) .set_string_fonts_Curie(strings, fonts)
   files <- list.files(work, recursive = TRUE, all.files = TRUE, no.. = TRUE)
   out <- tempfile(fileext = ".xlsx")
   zip::zip(out, files = files, root = work, mode = "mirror")
@@ -88,15 +88,15 @@ apply_excel_fonts_CURIE <- function(path, fonts = .excel_fonts_CURIE) {
   invisible(path)
 }
 
-# CURIEのExcel出力の共通関数：writexl で書いて、フォントを適用する
-write_xlsx_CURIE <- function(sheets, path, col_names = TRUE, fonts = .excel_fonts_CURIE) {
+# CurieのExcel出力の共通関数：writexl で書いて、フォントを適用する
+write_xlsx_Curie <- function(sheets, path, col_names = TRUE, fonts = .excel_fonts_Curie) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   writexl::write_xlsx(sheets, path, col_names = col_names, format_headers = FALSE)
-  apply_excel_fonts_CURIE(path, fonts)
+  apply_excel_fonts_Curie(path, fonts)
 }
 
 # 確認用：xlsxの中で使われているフォントを数える（文字列の区間とセルの書式）
-excel_font_summary_CURIE <- function(path) {
+excel_font_summary_Curie <- function(path) {
   work <- tempfile("xlsx_")
   dir.create(work)
   on.exit(unlink(work, recursive = TRUE), add = TRUE)

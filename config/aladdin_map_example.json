@@ -1,5 +1,5 @@
 {
-  "_説明": "Aladdin 送信用 JSON の対応表の見本。値はすべて空（未提示）。Aladdin の資料をもとに埋めたものを別名で保存し、環境変数 CURIE_ALADDIN_MAP にその場所を書く（tmp/.Renviron など）。キーは原文の値の大文字。",
+  "_説明": "Aladdin 送信用 JSON の対応表の見本。値はすべて空（未提示）。Aladdin の資料をもとに埋めたものを別名で保存し、環境変数 Curie_ALADDIN_MAP にその場所を書く（tmp/.Renviron など）。キーは原文の値の大文字。",
   "our_party_names": [],
   "spread_unit": "",
   "counterparty_codes": { "DEMO SECURITIES CO., LTD.": "" },

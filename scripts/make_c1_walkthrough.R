@@ -4,10 +4,10 @@
 #   A. 成功（PDF）
 #   B. 成功（HTML。全体を1ページとして扱う）
 #   C. 取得失敗（資料がない）
-# CURIEプロジェクトの最上位フォルダで実行する：Rscript scripts/make_c1_walkthrough.R
+# Curieプロジェクトの最上位フォルダで実行する：Rscript scripts/make_c1_walkthrough.R
 
-if (!file.exists("CURIE.Rproj")) stop("CURIEプロジェクトの最上位フォルダで実行してください。")
-source("R/load_CURIE.R", encoding = "UTF-8")
+if (!file.exists("Curie.Rproj")) stop("Curieプロジェクトの最上位フォルダで実行してください。")
+source("R/load_Curie.R", encoding = "UTF-8")
 source("scripts/demo_data/demo_trs_terms.R", encoding = "UTF-8")
 suppressPackageStartupMessages(library(dplyr))
 
@@ -52,7 +52,8 @@ md_table <- function(df) {
 # 画面出力のうち、処理の段階を示す行（[c1] のログ）と結果の行
 log_lines <- function(case) {
   x <- grep("\\[c1\\]|^状態：|^段階：|^取得：|^判定：|^JSON：|^FpML：|^■ トータル", case$console, value = TRUE)
-  x <- gsub("C:\\\\AnalyticFin\\\\Projects\\\\CURIE\\\\|C:/AnalyticFin/Projects/CURIE/", "", x)
+  # 手元のフォルダの場所は出さない（Windows は大文字小文字を区別しないので、区別せずに除く）
+  x <- gsub("C:\\\\AnalyticFin\\\\Projects\\\\Curie\\\\|C:/AnalyticFin/Projects/Curie/", "", x, ignore.case = TRUE)
   substr(x, 1, 160)
 }
 checks_table <- function(case) {
@@ -99,7 +100,7 @@ qmd <- c(
   "#set par(justify: false)",
   "#show raw: set text(font: (\"Consolas\", \"MS UI Gothic\"), size: 7pt)",
   "#show table: set text(size: 7.5pt)",
-  "#align(center)[#text(size: 17pt, weight: \"bold\")[CURIE c1：TRS 確認書の読解 ― 動き方]]",
+  "#align(center)[#text(size: 17pt, weight: \"bold\")[Curie c1：TRS 確認書の読解 ― 動き方]]",
   paste0("#align(center)[#text(size: 10pt)[架空のデモ資料で実行した記録（", format(Sys.Date()), "）]]"),
   "```",
   "",
@@ -182,9 +183,9 @@ qmd <- c(
   "",
   "## 8. いまの制約",
   "",
-  "- **FpML の公式 XSD**：未設定（`CURIE_FPML_XSD`）。設定するまで「検証済み」にならない",
+  "- **FpML の公式 XSD**：未設定（`Curie_FPML_XSD`）。設定するまで「検証済み」にならない",
   "- **Aladdin**：送信用 JSON は下書きだけ作る（`aladdin_request_DRAFT.json`。未確定の項目は `aladdin_unresolved.json`）。送信先・認証が未提示のため送信しない",
-  "- **公開元の制限**：SEC などは名前と連絡先を含む User-Agent が必要（`CURIE_HTTP_USER_AGENT`）。アクセス制限は回避しない",
+  "- **公開元の制限**：SEC などは名前と連絡先を含む User-Agent が必要（`Curie_HTTP_USER_AGENT`）。アクセス制限は回避しない",
   "- **PDF を Claude が読む**には poppler（pdftoppm）が必要",
   "",
   "## 9. URL からの取得（HTTP 応答のモック）",
