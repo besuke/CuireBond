@@ -105,7 +105,8 @@ check("Claude (mock) called only for the 5 non-duplicates", calls$n == 5L)
 check("No work folders or locks left", !length(list.files(config$work)) && !length(list.files(config$locks)))
 
 # TSV・validation.json・payload の中身（同じ抽出・検証済みデータから）
-tsv <- read.delim(file.path(a_dir, expected_files[2]), fileEncoding = "UTF-8-BOM", check.names = FALSE, colClasses = "character")
+tsv <- read.delim(file.path(a_dir, expected_files[2]), sep = "|", quote = "", fileEncoding = "UTF-8-BOM", check.names = FALSE,
+                  colClasses = "character")
 check("TSV is long format (item, leg, period, value, unit, quote, result)",
       all(c("項目ID", "レッグ", "期間番号", "値", "単位", "原文根拠", "検証結果", "FpMLとの整合") %in% names(tsv)) &&
         tsv$値[tsv$項目ID == "trade.termination_date"] == "2027-10-08")

@@ -42,7 +42,7 @@ report_test_results_Curie <- function(results, path) {
   out <- results |>
     dplyr::mutate(result = dplyr::if_else(.data$pass %in% TRUE, "PASS", "FAIL"), .before = 1) |>
     dplyr::select(-"pass")
-  readr::write_tsv(out, path, na = "")
+  readr::write_delim(out, path, delim = "|", na = "")   # パイプ区切り（C1 の縦持ちの表と同じ）
   purrr::walk2(out$result, out$test, \(r, t) say_Curie(r, "  ", t))
   say_Curie(sum(out$result == "PASS"), "/", nrow(out), " passed")
   say_path_Curie("Test results saved.", path, "file")

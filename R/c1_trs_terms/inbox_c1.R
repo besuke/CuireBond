@@ -103,11 +103,12 @@ c1_conditions_table <- function(validation) {
       備考 = .data$review_note)
 }
 
-# TSV（UTF-8・BOM 付き。Excel でも文字化けしない）。値の中のタブ・改行は空白にする
+# 縦持ちの表のファイル（パイプ | 区切り。UTF-8・BOM 付きで Excel でも文字化けしない）。
+# 列がずれないように、値の中の | は / に、タブ・改行は空白にする
 .write_tsv_c1 <- function(df, path) {
-  clean <- function(x) gsub("[\t\r\n]+", " ", dplyr::coalesce(as.character(x), ""))
-  lines <- c(paste(names(df), collapse = "\t"),
-             purrr::pmap_chr(dplyr::mutate(df, dplyr::across(dplyr::everything(), clean)), \(...) paste(c(...), collapse = "\t")))
+  clean <- function(x) gsub("[\t\r\n]+", " ", gsub("|", "/", dplyr::coalesce(as.character(x), ""), fixed = TRUE))
+  lines <- c(paste(names(df), collapse = "|"),
+             purrr::pmap_chr(dplyr::mutate(df, dplyr::across(dplyr::everything(), clean)), \(...) paste(c(...), collapse = "|")))
   con <- file(path, "wb")
   on.exit(close(con))
   writeBin(c(as.raw(c(0xEF, 0xBB, 0xBF)), charToRaw(enc2utf8(paste0(paste(lines, collapse = "\r\n"), "\r\n")))), con)
