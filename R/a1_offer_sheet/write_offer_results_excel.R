@@ -113,8 +113,8 @@ write_offer_results_excel_Curie <- function(workflow = c("JPY", "ISO"), pricing,
   workflow <- match.arg(workflow)
   target <- normalizePath(path, winslash = "/", mustWork = FALSE)
   if (target %in% normalizePath(protected_paths, winslash = "/", mustWork = FALSE)) {
-    stop("The output path is the same as the input file. The original Excel file is not overwritten.
-", path_line_Curie(path, "file"), call. = FALSE)
+    stop("The output path is the same as the input file. The original Excel file is not overwritten.\n",
+         path_line_Curie(path, "file"), call. = FALSE)
   }
   columns <- c(.result_columns_common_Curie, .result_columns_workflow_Curie[[workflow]],
                "pricing_status", "pricing_message")
