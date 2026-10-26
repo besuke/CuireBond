@@ -90,10 +90,16 @@ stop_c1_inbox_watch(config)                         # 停止（処理中の1件�
 起動すると、最初に次を表示する（監視でも、ログ `logs/watch.log` の先頭に同じものを書く）。
 
 ```
-****** CURIE OTC Derivative ******
-Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.
+  ==================================================================
+       ____ _   _ ____  ___ _____
+      / ___| | | |  _ \|_ _| ____|
+     | |   | | | | |_) || ||  _|
+     | |___| |_| |  _ < | || |___
+      \____|\___/|_| \_\___|_____|    O T C   D e r i v a t i v e
+  ==================================================================
+    Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.
 
-Contract validation started.
+[*]  Contract validation started.
 Watching PDF files directly under this folder (subfolders such as processed are excluded).
 dir:C:/AnalyticFin/temp/TRS_curie_PDF
 Completed cases are saved under this folder.

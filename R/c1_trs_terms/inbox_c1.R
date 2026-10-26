@@ -186,8 +186,9 @@ read_c1_history <- function(config) {
 
 # 出来事の表示（英語）：時刻・文言・元のファイル名（理由）→ 取引の要約 → 改行して dir:／file: で保存先
 .say_c1_event <- function(ev) {
-  title <- c(detected = "PDF detected.", started = "Processing started.", completed = "Processing completed.",
-             review = "Saved for review.", duplicate = "Duplicate skipped.", failed = "Processing failed.")[[ev$event]]
+  # 種類が一目で分かる印（絵文字は ASCII 外でログ収集時に文字化けしうるので、ASCII の記号にする）
+  title <- c(detected = "[+]  PDF detected.", started = "[>]  Processing started.", completed = "[OK] Processing completed.",
+             review = "[!]  Saved for review.", duplicate = "[=]  Duplicate skipped.", failed = "[X]  Processing failed.")[[ev$event]]
   say_Curie(ev$time, " ", title, " ", ev$file, if (nzchar(ev$reason %||% "")) paste0(" (", ev$reason, ")"))
   if (length(ev$summary)) {
     s <- unlist(ev$summary)
@@ -283,10 +284,18 @@ process_c1_pdf <- function(pdf, config, claude_mode = c("api", "demo"), claude_d
 # ---- フォルダーの処理 -------------------------------------------------------------------------
 # 起動メッセージ：どのフォルダーを監視し、どこへ保存するか（extra：追加の行）
 c1_inbox_banner <- function(config, extra = NULL) {
-  # © は ASCII 外でログ収集時に文字化けしうるので (C) と書く
-  say_Curie("****** CURIE OTC Derivative ******")
-  say_Curie("Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.\n")
-  say_Curie("Contract validation started.")
+  # ロゴ（ASCII だけ。© も ASCII 外でログ収集時に文字化けしうるので (C) と書く）
+  say_Curie(r"(
+  ==================================================================
+       ____ _   _ ____  ___ _____
+      / ___| | | |  _ \|_ _| ____|
+     | |   | | | | |_) || ||  _|
+     | |___| |_| |  _ < | || |___
+      \____|\___/|_| \_\___|_____|    O T C   D e r i v a t i v e
+  ==================================================================
+    Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.
+)")
+  say_Curie("[*]  Contract validation started.")
   say_path_Curie("Watching PDF files directly under this folder (subfolders such as processed are excluded).", config$inbox, "dir")
   say_path_Curie("Completed cases are saved under this folder.", config$processed, "dir")
   if (length(extra)) say_Curie(paste(extra, collapse = "\n"))
@@ -450,7 +459,7 @@ start_c1_inbox_watch <- function(config, interval_sec = 30, claude_mode = c("api
   # 動いている印が残っていても、監視プロセスがなければ古い印として消す
   if (dir.exists(w$lock) && !length(.watch_workers_c1(w))) {
     unlink(c(w$lock, w$stop), recursive = TRUE)
-    say_Curie("Removed a stale watcher lock (no watcher process was running).")
+    say_Curie("[i]  Removed a stale watcher lock (no watcher process was running).")
   }
   if (!dir.create(w$lock, showWarnings = FALSE)) {
     stop("The watcher is already running. Stop it with stop_c1_inbox_watch(config).\n", path_line_Curie(w$lock, "dir"), call. = FALSE)
@@ -465,7 +474,7 @@ start_c1_inbox_watch <- function(config, interval_sec = 30, claude_mode = c("api
                              wd = config$project_root, stdout = w$log, stderr = "2>&1", cleanup = FALSE)
   assign(config$root, p, envir = .c1_watch_env)
   c1_inbox_banner(config)
-  say_Curie("Watcher started. Scan interval: ", interval_sec, " s (separate R process).")
+  say_Curie("[*]  Watcher started. Scan interval: ", interval_sec, " s (separate R process).")
   say_path_Curie("Watcher log.", w$log, "file")
   if (follow) follow_c1_inbox_watch(config)
   invisible(p)
