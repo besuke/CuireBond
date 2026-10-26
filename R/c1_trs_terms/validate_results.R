@@ -79,7 +79,12 @@
   if (is.null(doc)) return(tibble::tibble())
   purrr::pmap(.fpml_targets_c1, function(item_id, element) {
     row <- dplyr::filter(conditions, .data$item_id == .env$item_id, .data$seq %in% c("1", ""))
-    texts <- xml2::xml_text(xml2::xml_find_all(doc, paste0("//*[local-name()='", element, "']")))
+    nodes <- xml2::xml_find_all(doc, paste0("//*[local-name()='", element, "']"))
+    # 日付の要素は unadjustedDate の値を見る（営業日調整などの子要素の文字を混ぜない）
+    texts <- purrr::map_chr(nodes, function(n) {
+      d <- xml2::xml_find_first(n, ".//*[local-name()='unadjustedDate']")
+      xml2::xml_text(if (inherits(d, "xml_missing")) n else d)
+    })
     texts <- trimws(texts[nzchar(trimws(texts))])
     stated <- nrow(row) > 0 && row$value_status[1] == "stated" && row$review_status[1] %in% c("confirmed", "corrected")
     value <- if (nrow(row)) row$value[1] else ""

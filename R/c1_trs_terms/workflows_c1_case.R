@@ -17,8 +17,10 @@ workflows_c1_case <- function(shared_url, copilot_mode = c("api", "manual", "dem
   copilot_mode <- match.arg(copilot_mode)
   claude_mode <- match.arg(claude_mode)
   if (!nzchar(pwsh)) stop("PowerShell 7（pwsh）が見つかりません。", call. = FALSE)
-  if (copilot_mode %in% c("manual", "demo") && (is.null(copilot_file) || !file.exists(copilot_file))) {
-    stop("Copilot の ", copilot_mode, " モードには回答ファイル（copilot_file）が必要です。", call. = FALSE)
+  # manual・demo で回答ファイルがなくても止めない（Copilot の失敗として記録し、Claude単独処理に進む）
+  has_copilot_file <- !is.null(copilot_file) && file.exists(copilot_file)
+  if (copilot_mode %in% c("manual", "demo") && !has_copilot_file) {
+    message("Copilot の ", copilot_mode, " モードの回答ファイルがありません。Copilot は失敗として記録し、Claude単独処理に進みます。")
   }
   if (is.null(case_id)) {
     stem <- gsub("[^A-Za-z0-9_-]", "_", tools::file_path_sans_ext(basename(utils::URLdecode(sub("[?#].*$", "", shared_url)))))
@@ -28,8 +30,8 @@ workflows_c1_case <- function(shared_url, copilot_mode = c("api", "manual", "dem
   args <- c("-NoProfile", "-File", q(normalizePath(file.path(.c1_ps_dir, "run_document.ps1"))),
             "-SharedUrl", q(shared_url), "-CopilotMode", copilot_mode, "-ClaudeMode", claude_mode,
             "-CaseId", q(case_id), "-OutputRoot", q(normalizePath(output_root, mustWork = FALSE)),
-            if (copilot_mode == "manual") c("-CopilotManualPath", q(normalizePath(copilot_file))),
-            if (copilot_mode == "demo") c("-CopilotDemoPath", q(normalizePath(copilot_file))),
+            if (copilot_mode == "manual" && has_copilot_file) c("-CopilotManualPath", q(normalizePath(copilot_file))),
+            if (copilot_mode == "demo" && has_copilot_file) c("-CopilotDemoPath", q(normalizePath(copilot_file))),
             if (claude_mode == "demo") c("-ClaudeDemoDir", q(normalizePath(claude_demo_dir))))
   message(format(Sys.time(), "%H:%M:%S"), " [c1] PowerShell を起動します（Copilot：", copilot_mode, "、Claude：", claude_mode, "）")
   exit <- system2(pwsh, args, stdout = "", stderr = "")

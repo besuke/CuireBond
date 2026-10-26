@@ -1,0 +1,254 @@
+---
+format:
+  typst:
+    papersize: a4
+    margin: {x: 1.6cm, y: 1.6cm}
+    fontsize: 9.5pt
+    toc: false
+---
+
+```{=typst}
+#set text(font: ("Cambria", "MS UI Gothic"), lang: "ja")
+#set par(justify: false)
+#show raw: set text(font: ("Consolas", "MS UI Gothic"), size: 7pt)
+#show table: set text(size: 7.5pt)
+#align(center)[#text(size: 17pt, weight: "bold")[CURIE c1：TRS 確認書の読解 ― 動き方]]
+#align(center)[#text(size: 10pt)[架空のデモ資料で実行した記録（2026-10-26）]]
+```
+
+::: {.callout-note}
+この文書の資料・値はすべて架空のデモです。入力はローカルのデモ PDF（
+`data/demo_c1_trs/pdf/DEMO_TRS_confirmation.pdf`）で、Copilot と Claude はモック（費用なし）で動かしました。URL からの取得は HTTP 応答のモックで確かめています（10 章）。
+画面の記録と表は、そのときの実際の出力です。
+:::
+
+## 1. 何をするか
+
+TRS（トータル・リターン・スワップ）の確認書・ターム条件を読み、参照資産・資金調達の参照金利・フィキシング・
+カレンダーなどの条件を、根拠（ページ・原文の引用）つきで条件表（CSV・JSON・Excel）と FpML にします。価格計算はしません。
+推測で条件を埋めず、空欄・選択肢・記載なしは、そのまま区別して記録します。
+
+| 担当 | 処理 |
+|---|---|
+| PowerShell（R/c1_trs_terms/PS/） | 資料の取得と記録、読解用データ（本文・OCR）、Microsoft への委任認証、Copilot の一次読解、Claude の原文照合・FpML 作成、CSV・JSON・FpML の保存 |
+| R | 入口（URL の受付）、終了コード・成果物の受取、条件・根拠・版・FpML（XML構文／公式XSD／CSV との一致）の検証、表・Excel の表示 |
+
+## 2. 処理の流れ
+
+1. **入力**：RStudio で `source("scripts/run_c1_document.R", encoding = "UTF-8")` を実行し、「配置済み資料の共有URLを貼ってください:」に URL かファイルのパスを貼る
+2. **資料の取得**：原資料をそのまま保存し、取得元・取得日時・HTTP・Content-Type・SHA-256 を記録。取得できなければ **取得失敗** で止まる（アクセス制限は回避しない）
+3. **読解用データ**：PDF はページごとの本文、文字のないページは Windows 標準の OCR、HTML は本文（全体を1ページ）
+4. **Copilot の一次読解**：SharePoint／OneDrive はファイル参照、それ以外は本文を additionalContext で渡す（Microsoft 365 Copilot Chat API。beta／プレビュー）
+5. **Claude**：Copilot が成功すれば「原資料＋Copilot の結果」を原文で確かめる（**Copilot一次読解＋Claude確認**）。Copilot が未接続・利用上限・エラー・読解失敗・形式不正なら、理由を記録して原資料を単独で読む（**Claude単独処理**）
+6. **保存**：条件を CSV（1項目1行）・JSON に、FpML・要確認事項・根拠・実行ログとともに保存
+7. **R の検証**：条件・根拠・版・FpML を検証。すべて合格し、必須項目がそろい、公式 XSD にも適合したときだけ **検証済み**（FpML は最終版）。それ以外は **要確認**（FpML はドラフト）
+
+## 3. 入力の種類と、AI への渡し方
+
+| 入力 | 形式の判定 | Copilot への渡し方 | Claude への渡し方 |
+|---|---|---|---|
+| 公開 PDF の URL | 中身・Content-Type・拡張子 | 本文を additionalContext（1ページ1件） | 取得した PDF |
+| 公開 HTML の URL | 同上（文字コードも判定） | 本文を additionalContext | 取得した HTML のまま |
+| ローカルの PDF・HTML | 同上 | 本文を additionalContext | 同じファイル |
+| SharePoint／OneDrive | 同上 | ファイル参照（contextualResources.files） | Graph で取得した同じ版（SHA-256・eTag で確認） |
+
+## 4. 状態と終了コード
+
+| 状態 | 終了コード | 意味 |
+|---|---|---|
+| 検証済み | 0 | R の検証に合格し、必須項目がそろい、公式 XSD に適合。FpML は fpml_final.xml |
+| 要確認 | 0 | 成果物はあるが、不合格・未確定・Claude単独処理・XSD 未検証のどれかがある。FpML は fpml_DRAFT.xml |
+| 未接続 | 2 | SharePoint の資料でサインインできない（資料を取得できない） |
+| 取得失敗 | 3 | 原資料を取得できない（URL がない、アクセス拒否など） |
+| Claude 読解失敗／回答形式不正 | 6／7 | Claude が原資料を読めない、または結果の形式が不正 |
+| 読解用データ作成失敗 | 8 | 本文を抜き出せず、OCR でも読めない |
+
+Copilot の失敗（未接続・利用上限・API エラー・読解失敗・回答形式不正）では止まらず、Claude単独処理に進みます。
+
+## 5. 実行例 A：Copilot一次読解＋Claude確認
+
+入力：`data/demo_c1_trs/pdf/DEMO_TRS_confirmation.pdf`（Copilot・Claude ともモック）
+
+```
+10:40:21 [c1] PowerShell を起動します（Copilot：demo、Claude：demo）
+10:40:22 [c1-ps] 資料の取得：data/demo_c1_trs/pdf/DEMO_TRS_confirmation.pdf（ローカルファイル）
+10:40:26 [c1-ps] 資料の取得：DEMO_TRS_confirmation.pdf（PDF、2 ページ、SHA-256 9bc05dd08dc7…、本文 pdf_text 2 ページ）
+10:40:26 [c1-ps] Copilot 依頼文作成：モード demo、資料の渡し方 additionalContext（取得した原資料の本文。2 ページ）
+10:40:26 [c1-ps] Copilot API実行：デモ（モック。Copilot は呼ばない）
+10:40:26 [c1-ps] Copilot 回答取得：モックの回答：data\demo_c1_trs\extractions\DEMO_TRS_0001__copilot.json
+10:40:26 [c1-ps] Claude 依頼文作成：モード demo、Copilot の一次読解を原文で照合
+10:40:27 [c1-ps] Claude 実行：デモ（用意した結果を使う。Claude は呼ばない）
+10:40:28 [c1-ps] Claude 回答取得：デモの結果：output\c1_trs\walkthrough\claude_demo
+10:40:28 [c1-ps] 成果物の保存：output\c1_trs\cases\DEMO_TRS_confirmation_20261026_104021\result
+10:40:30 [c1-ps] 終了：状態：要確認（終了コード 0）　案件フォルダ：output\c1_trs\cases\DEMO_TRS_confirmation_20261026_104021
+10:40:30 [c1] PowerShell が終了しました（終了コード 0：成果物あり（R の検証待ち））
+読み方：Copilot一次読解＋Claude確認
+状態：要確認（FpML の公式XSD 検証が未実施または不適合）
+段階：資料 取得済み／読解用データ 作成済み（pdf_text 2 ページ）／Copilot 取得済み（デモ：Copilot は呼んでいない）／Claude 取得済み（デモ：Claude は呼んでいない）／成果物 保存済み（R の検証待ち）
+取得：local_file、pdf、HTTP —、2026-10-26T10:40:22+09:00、SHA-256 9bc05dd08dc7…
+Copilot への資料の渡し方：additionalContext（取得した原資料の本文。2 ページ）
+FpML：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_104021/result/fpml_DRAFT.xml（ドラフト：未検証または条件不足）
+■ トータル・リターン・スワップか：はい（根拠 p.1）
+```
+
+**主な条件**（Copilot のモックには、スプレッドを 30 と読む誤りと、ルックバックの見落としを仕込んである。Claude 役が原文で修正した）
+
+| 項目 | 値 | 単位 | ページ | Copilotの値 | 確認状態 |
+|---|---|---|---|---|---|
+| 商品の種類 | TOTAL_RETURN_SWAP |  | 1 | TOTAL_RETURN_SWAP | confirmed |
+| 取引実行日 | 2026-10-06 | date | 1 | 2026-10-06 | confirmed |
+| 効力発生日 | 2026-10-08 | date | 1 | 2026-10-08 | confirmed |
+| 終了日 | 2027-10-08 | date | 1 | 2027-10-08 | confirmed |
+| 参照資産・指数の名称 | DEMO Japan Credit Bond Index |  | 1 | DEMO Japan Credit Bond Index | confirmed |
+| 資金調達の参照金利 | JPY-TONA-OIS Compound |  | 2 | JPY-TONA-OIS Compound | confirmed |
+| スプレッド | 35 | bp | 2 | 30 | corrected |
+| ルックバック | 5 | business_days | 2 |  | corrected |
+| フィキシング日 | -2 | business_days | 2 | -2 | confirmed |
+| フィキシングの営業日カレンダー | Tokyo |  | 2 | Tokyo | confirmed |
+| 支払日の営業日カレンダー | Tokyo |  | 2 | Tokyo | confirmed |
+
+**R の検証**
+
+| 区分 | 検証 | 結果 | 詳細 |
+|---|---|---|---|
+| 実行 | PowerShell の処理 | 合格 | 終了コード 0：成果物あり（R の検証待ち） |
+| 読解 | Copilot の一次読解と Claude の原文照合 | 合格 | Copilot一次読解＋Claude確認 |
+| CSV | CSV と JSON の一致 | 合格 | 47 行 |
+| 条件 | 項目IDが定義にある | 合格 |  |
+| 条件 | 項目・レッグ・番号の重複なし | 合格 |  |
+| 条件 | 必須項目の行がある | 合格 |  |
+| 条件 | 原文の状態の値 | 合格 |  |
+| 条件 | 記載ありの項目に値がある | 合格 |  |
+| 条件 | 記載ありの値の型 | 合格 |  |
+| 条件 | 単位 | 合格 |  |
+| 条件 | 日付の順序（約定日≦開始日＜終了日、最終評価日≦終了日） | 合格 |  |
+| 条件 | トータル・リターン・スワップである | 合格 | TOTAL_RETURN_SWAP |
+| 確認 | 確認状態の値 | 合格 |  |
+| 確認 | 修正した項目に理由がある | 合格 |  |
+| 確認 | 修正（corrected）は Copilot と値が違う項目だけ | 合格 |  |
+| 確認 | 必須項目が原文で確認された | 合格 |  |
+| 根拠 | 原文引用が指定ページにある | 合格 |  |
+| 根拠 | OCR で読んだページの引用（原資料で照合できない） | 合格 | OCR なし |
+| 版 | 原資料が取得時の記録と一致（SHA-256） | 合格 |  |
+| 版 | 読解中に SharePoint 上の資料が変わっていない（eTag） | 対象外 | SharePoint 以外の資料 |
+| FpML | XML構文（整形式・ルート要素） | 合格 | dataDocument |
+| FpML | 公式XSD | 未実施（XSD未設定） | XSD未設定（スキーマ検証未実施）  |
+| FpML | CSV との一致：trade.trade_date | 合格 | CSV「2026-10-06」／FpML「2026-10-06」 |
+| FpML | CSV との一致：trade.effective_date | 合格 | CSV「2026-10-08」／FpML「2026-10-08、2026-10-08」 |
+| FpML | CSV との一致：trade.termination_date | 合格 | CSV「2027-10-08」／FpML「2027-10-08、2027-10-08」 |
+| FpML | CSV との一致：trade.notional_currency | 合格 | CSV「JPY」／FpML「JPY、JPY、JPY」 |
+| FpML | CSV との一致：funding.floating_rate_index | 合格 | CSV「JPY-TONA-OIS Compound」／FpML「JPY-TONA-OIS Compound」 |
+| 出力 | Aladdin 用JSON | 未作成 | Aladdin の仕様が提示されていないため作らない |
+
+## 6. 実行例 B：Claude単独処理（Copilot 未実施）
+
+同じ URL を Copilot の api モードで実行した。接続情報（テナントID・クライアントID）がないため Copilot は未実施となり、
+理由を記録して Claude が原資料を単独で読んだ（Claude はモック）。
+
+```
+10:40:43 [c1] PowerShell を起動します（Copilot：api、Claude：demo）
+10:40:44 [c1-ps] 資料の取得：data/demo_c1_trs/pdf/DEMO_TRS_confirmation.pdf（ローカルファイル）
+10:40:45 [c1-ps] 資料の取得：DEMO_TRS_confirmation.pdf（PDF、2 ページ、SHA-256 9bc05dd08dc7…、本文 pdf_text 2 ページ）
+10:40:45 [c1-ps] サインイン：委任認証（デバイスコード）。権限：Sites.Read.All, Mail.Read, People.Read.All, OnlineMeetingTranscript.Read.All, Chat.Read, ChannelMessage.Read.All, Extern
+10:40:45 [c1-ps] Copilot：使えないため、Claude が原資料を単独で読みます（未接続：接続情報がありません: CURIE_M365_TENANT_ID, CURIE_M365_CLIENT_ID。テナントIDとアプリ登録のクライアントIDを環境変数に設定してください（demo には切り替えませ
+10:40:45 [c1-ps] Claude 依頼文作成：モード demo、Copilot なし：原文から単独で抽出
+10:40:45 [c1-ps] Claude 実行：デモ（用意した結果を使う。Claude は呼ばない）
+10:40:45 [c1-ps] Claude 回答取得：デモの結果：output\c1_trs\walkthrough\claude_demo
+10:40:45 [c1-ps] 成果物の保存：output\c1_trs\cases\DEMO_TRS_confirmation_20261026_104043\result
+10:40:45 [c1-ps] 終了：状態：要確認（終了コード 0）　案件フォルダ：output\c1_trs\cases\DEMO_TRS_confirmation_20261026_104043
+10:40:45 [c1] PowerShell が終了しました（終了コード 0：成果物あり（R の検証待ち））
+読み方：Claude単独処理（Copilot 未実施：未接続：接続情報がありません: CURIE_M365_TENANT_ID, CURIE_M365_CLIENT_ID。テナントIDとアプリ登録のクライアントIDを環境変数に設定してください（demo には切り替えません））
+状態：要確認（Claude単独処理、FpML の公式XSD 検証が未実施または不適合）
+段階：資料 取得済み／読解用データ 作成済み（pdf_text 2 ページ）／Copilot 未接続／Claude 取得済み（デモ：Claude は呼んでいない）／成果物 保存済み（R の検証待ち）
+取得：local_file、pdf、HTTP —、2026-10-26T10:40:44+09:00、SHA-256 9bc05dd08dc7…
+FpML：output/c1_trs/cases/DEMO_TRS_confirmation_20261026_104043/result/fpml_DRAFT.xml（ドラフト：未検証または条件不足）
+■ トータル・リターン・スワップか：はい（根拠 p.1）
+```
+
+## 7. 実行例 C：取得失敗
+
+存在しないファイルを指定した。原資料を取得できないため、AI には進まずに止まる（URL の 404・403 も同じ扱い。10 章）。
+
+```
+10:40:57 [c1] PowerShell を起動します（Copilot：demo、Claude：demo）
+10:40:58 [c1-ps] 資料の取得：data/demo_c1_trs/pdf/DEMO_TRS_missing.pdf（ローカルファイル）
+10:40:58 [c1-ps] 中止：資料を取得できません（取得失敗）: ファイルがありません: data/demo_c1_trs/pdf/DEMO_TRS_missing.pdf
+10:40:58 [c1-ps] 終了：状態：取得失敗（終了コード 3）　案件フォルダ：output\c1_trs\cases\DEMO_TRS_missing_20261026_104057
+10:40:58 [c1] PowerShell が終了しました（終了コード 3：取得失敗（資料を取得できない））
+読み方：Copilot一次読解＋Claude確認
+状態：取得失敗
+段階：資料 取得失敗／読解用データ 未実行／Copilot 未実行／Claude 未実行／成果物 未実行
+```
+
+## 8. 成果物
+
+```
+output/c1_trs/cases/<案件ID>/
+  manifest.json            実行の記録（段階ごとの状態・終了コード・モード・読み方・エラー）
+  r_validation.json        R の検証結果
+  source/original.pdf|htm  取得した原資料（そのまま）
+  source/acquisition.json  取得元・取得日時・HTTP・Content-Type・形式の判定根拠・SHA-256
+  source/reading_*         読解用データ（ページごとの本文。必要ならOCR）
+  agents/copilot/          Copilot への依頼文・回答・一次読解・記録
+  agents/claude/           Claude への依頼文・原文照合（reviewed.json）・FpML 案・記録
+  result/conditions.csv    条件（UTF-8、1項目1行。leg_id と seq で反復を区別）
+  result/conditions.json   同じ内容の JSON
+  result/fpml_DRAFT.xml    FpML（検証済みなら fpml_final.xml）
+  result/c1_validation.xlsx 確認用の Excel（実行記録・検証結果・条件）
+  result/review_items.md   要確認事項
+```
+
+**conditions.csv の先頭**（1項目1行）
+
+```
+"case_id","item_id","leg_id","seq","value","unit","value_status","source_page","source_location","quote","copilot_value","review_status","review_note"
+"DEMO_TRS_confirmation_20261026_104021","trade.product_type","trade","1","TOTAL_RETURN_SWAP","","stated","1","","Total Return Swap Confirmation","TOTA
+"DEMO_TRS_confirmation_20261026_104021","trade.dealer","trade","1","DEMO Securities Co., Ltd.","","stated","1","","Dealer: DEMO Securities Co., Ltd.",
+"DEMO_TRS_confirmation_20261026_104021","trade.dealer_reference","trade","1","DEMO-TRS-0001","","stated","1","","Dealer Reference: DEMO-TRS-0001","DEM
+```
+
+**FpML の先頭**（ドラフト。未確認・未出力の項目は XML コメントに列挙する）
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<dataDocument xmlns="http://www.fpml.org/FpML-5/confirmation" fpmlVersion="5-12">
+  <!-- CURIE c1 TRS FpML（ドラフト：正式なFpMLではない） document_id=DEMO_TRS_confirmation -->
+  <!-- FpML 5.x confirmation の returnSwap を目指した構造。公式XSDでの検証は未実施 -->
+  <trade>
+    <tradeHeader>
+      <partyTradeIdentifier>
+        <partyReference href="party_dealer"/>
+        <tradeId tradeIdScheme="urn:curie:dealer-reference">DEMO-TRS-0001</tradeId>
+      </partyTradeIdentifier>
+      <tradeDate>2026-10-06</tradeDate>
+    </tradeHeader>
+    <returnSwap>
+      <returnLeg id="returnLeg">
+        <payerPartyReference href="party_dealer"/>
+        <receiverPartyReference href="party_counterparty"/>
+        <effectiveDate id="effectiveDate">
+          <adjustableDate>
+```
+
+## 9. いまの制約
+
+- **Copilot**：Microsoft 365 Copilot Chat API は beta（プレビュー）。テナントID・クライアントID（アプリ登録、委任権限7つと管理者同意）と Copilot ライセンスが必要。接続確認は `pwsh -File R/c1_trs_terms/PS/test_connection.ps1`
+- **FpML の公式 XSD**：未設定（`CURIE_FPML_XSD`）。設定するまで「検証済み」にならない
+- **Aladdin 用 JSON**：仕様の提示前のため作らない
+- **公開元の制限**：SEC などは名前と連絡先を含む User-Agent が必要（`CURIE_HTTP_USER_AGENT`）。アクセス制限は回避しない
+- これは独立した二重読解ではない（Copilot の一次読解を Claude が原文で確かめる）
+
+## 10. URL からの取得（HTTP 応答のモック）
+
+`pwsh -File scripts/test_c1_http_mock.ps1`：ネットワークにつながず、HTTP の応答を差し替えて取得処理を確かめた結果。
+
+```
+合格  200：PDF を取得し、形式は pdf
+合格  User-Agent は環境変数の値を見出しで渡す
+合格  200：中身が PDF なら Content-Type が違っても pdf（判定根拠を記録）
+合格  200：HTML（Windows-1252）を文字化けせずに本文にする
+合格  403：取得失敗。User-Agent の設定方法を案内し、ファイルを残さない
+合格  404：取得失敗
+合格  追跡用パラメータ（utm_）だけを除く
+7／7 件が期待どおり
+```

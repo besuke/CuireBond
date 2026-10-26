@@ -193,3 +193,41 @@ write_demo_trs_scanned_pdf_c1 <- function(dir, pdf) {
   html_to_pdf_c1(html, out)
   out
 }
+
+# Claude の結果のモック：原文（デモの正解）で確認し、Copilot の読み違い・読み落としを修正した形
+# （reviewed.json・fpml.xml・review_items.md。PowerShell の -ClaudeMode demo で使う。Claude は呼ばない）
+write_demo_claude_review_c1 <- function(dir, copilot_json, tamper = NULL) {
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  copilot <- read_trs_extraction_c1(copilot_json) |> dplyr::select("field", copilot_value = "value")
+  dict <- trs_field_dictionary_c1()
+  rows <- .demo_trs_truth_c1() |>
+    dplyr::left_join(copilot, by = "field") |>
+    dplyr::left_join(dplyr::select(dict, "field", "type"), by = "field") |>
+    dplyr::mutate(
+      leg_id = dplyr::case_when(startsWith(.data$field, "return.") ~ "return_leg", startsWith(.data$field, "funding.") ~ "interest_leg",
+                                .default = "trade"),
+      seq = 1L,
+      unit = dplyr::if_else(.data$value_status == "stated", .expected_unit_c1(.data$field, .data$type, "JPY"), ""),
+      review_status = dplyr::case_when(.data$value_status == "not_found" ~ "not_found",
+                                       .data$value_status != "stated" ~ "unresolved",
+                                       !is.na(.data$copilot_value) & .data$copilot_value == .data$value ~ "confirmed",
+                                       .default = "corrected"),
+      review_note = dplyr::if_else(.data$review_status == "corrected", paste0("原文 p.", .data$page, " で確認し、Copilot の値を修正"), ""),
+      location = ""
+    )
+  if (!is.null(tamper)) rows <- tamper(rows)
+  fields <- purrr::pmap(rows, function(field, value, value_status, page, quote, copilot_value, leg_id, seq, unit,
+                                       review_status, review_note, location, ...) {
+    list(field = field, leg_id = leg_id, seq = seq, value = if (is.na(value)) NULL else value, unit = unit,
+         value_status = value_status, page = if (is.na(page)) NULL else page, location = location,
+         quote = if (is.na(quote)) NULL else quote, copilot_value = if (is.na(copilot_value)) NULL else copilot_value,
+         review_status = review_status, review_note = review_note)
+  })
+  jsonlite::write_json(list(document = list(document_id = "DEMO_TRS_confirmation", extracted_by = "claude"), fields = fields),
+                       file.path(dir, "reviewed.json"), auto_unbox = TRUE, pretty = TRUE, null = "null")
+  values <- rlang::set_names(rows$value, rows$field)
+  xml2::write_xml(build_fpml_trs_c1(values[rows$value_status == "stated"], "DEMO_TRS_confirmation", "draft"), file.path(dir, "fpml.xml"))
+  writeLines(c("# 要確認事項（デモ：Claude は呼んでいない）", "", "- funding.spread_bp：Copilot 30 → 原文 35 bp（p.2）"),
+             file.path(dir, "review_items.md"), useBytes = TRUE)
+  dir
+}

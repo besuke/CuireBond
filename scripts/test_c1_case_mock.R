@@ -14,43 +14,8 @@ dir.create(fixtures, recursive = TRUE, showWarnings = FALSE)
 demo <- create_demo_trs_terms_c1(file.path("data", "demo_c1_trs"))
 copilot_json <- demo$extractions[["copilot"]]
 
-# Claude の結果のモック：原文（デモの正解）で確認し、Copilot の読み違い・読み落としを修正した形
-make_claude_demo <- function(dir, tamper = NULL) {
-  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
-  truth <- .demo_trs_truth_c1()
-  copilot <- read_trs_extraction_c1(copilot_json) |> select(field, copilot_value = value)
-  dict <- trs_field_dictionary_c1()
-  rows <- truth |>
-    left_join(copilot, by = "field") |>
-    left_join(select(dict, field, type), by = "field") |>
-    mutate(
-      leg_id = case_when(startsWith(field, "return.") ~ "return_leg", startsWith(field, "funding.") ~ "interest_leg", .default = "trade"),
-      seq = 1L,
-      unit = .expected_unit_c1(field, type, "JPY"),
-      unit = if_else(value_status == "stated", unit, ""),
-      review_status = case_when(value_status != "stated" & value_status == "not_found" ~ "not_found",
-                                value_status != "stated" ~ "unresolved",
-                                !is.na(copilot_value) & copilot_value == value ~ "confirmed",
-                                .default = "corrected"),
-      review_note = if_else(review_status == "corrected", paste0("原文 p.", page, " で確認し、Copilot の値を修正"), ""),
-      location = ""
-    )
-  if (!is.null(tamper)) rows <- tamper(rows)
-  fields <- purrr::pmap(rows, function(field, value, value_status, page, quote, copilot_value, leg_id, seq, unit,
-                                       review_status, review_note, location, ...) {
-    list(field = field, leg_id = leg_id, seq = seq, value = if (is.na(value)) NULL else value, unit = unit,
-         value_status = value_status, page = if (is.na(page)) NULL else page, location = location,
-         quote = if (is.na(quote)) NULL else quote, copilot_value = if (is.na(copilot_value)) NULL else copilot_value,
-         review_status = review_status, review_note = review_note)
-  })
-  jsonlite::write_json(list(document = list(document_id = "DEMO_TRS_confirmation", extracted_by = "claude"), fields = fields),
-                       file.path(dir, "reviewed.json"), auto_unbox = TRUE, pretty = TRUE, null = "null")
-  values <- rlang::set_names(rows$value, rows$field)
-  xml2::write_xml(build_fpml_trs_c1(values[rows$value_status == "stated"], "DEMO_TRS_confirmation", "draft"), file.path(dir, "fpml.xml"))
-  writeLines(c("# 要確認事項（デモ：Claude は呼んでいない）", "", "- funding.spread_bp：Copilot 30 → 原文 35 bp（p.2）"),
-             file.path(dir, "review_items.md"), useBytes = TRUE)
-  dir
-}
+# Claude の結果のモック（scripts/demo_data/demo_trs_terms.R の write_demo_claude_review_c1）
+make_claude_demo <- function(dir, tamper = NULL) write_demo_claude_review_c1(dir, copilot_json, tamper)
 claude_ok <- make_claude_demo(file.path(fixtures, "claude_ok"))
 claude_tampered <- make_claude_demo(file.path(fixtures, "claude_tampered"), function(r) r |>
   mutate(quote = if_else(field == "funding.day_count", "Day Count Fraction: Actual/360", quote)))
