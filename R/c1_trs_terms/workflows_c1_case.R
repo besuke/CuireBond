@@ -40,13 +40,21 @@ workflows_c1_case <- function(shared_url, copilot_mode = c("api", "manual", "dem
   }
   results <- read_c1_case_results(case_dir)
   validation <- validate_c1_case(results, xsd_path)
-  excel <- if (!is.null(results$conditions)) write_c1_case_excel(results, validation) else NA_character_
-  jsonlite::write_json(list(case_id = case_id, state = validation$state, exit_code = exit, modes = as.list(validation$modes),
+  ok <- identical(as.integer(exit), 0L) && !is.null(results$conditions)
+  excel <- if (ok) write_c1_case_excel(results, validation) else NA_character_
+  # FpML：検証済みなら最終版、それ以外（未検証・条件不足・Claude単独処理）はドラフトとして保存する
+  fpml_out <- NA_character_
+  if (ok && !is.na(results$files[["fpml"]])) {
+    fpml_out <- file.path(case_dir, "result", if (isTRUE(validation$final)) "fpml_final.xml" else "fpml_DRAFT.xml")
+    file.copy(results$files[["fpml"]], fpml_out, overwrite = TRUE)
+  }
+  jsonlite::write_json(list(case_id = case_id, state = validation$state, reading = validation$reading %||% "",
+                            exit_code = exit, modes = as.list(validation$modes),
                             validated_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"), excel = excel,
-                            checks = validation$checks),
+                            fpml = if (is.na(fpml_out)) NULL else basename(fpml_out), checks = validation$checks),
                        file.path(case_dir, "r_validation.json"), auto_unbox = TRUE, pretty = TRUE, null = "null")
-  list(state = validation$state, exit_code = exit, case_dir = results$case_dir, results = results,
-       validation = validation, excel = excel)
+  list(state = validation$state, reading = validation$reading, exit_code = exit, case_dir = results$case_dir,
+       results = results, validation = validation, excel = excel, fpml = fpml_out)
 }
 
 # コンソール表示用：主要項目の取得できたもの／できなかったもの

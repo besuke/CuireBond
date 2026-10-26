@@ -14,13 +14,23 @@
 
 $script:ClaudeOutputs = @('reviewed.json', 'fpml.xml', 'review_items.md')
 
-function New-C1ClaudePrompt($Document) {
-  @(
+function New-C1ClaudePrompt($Document, [bool]$HasCopilot = $true, [string]$MissingReason = '') {
+  $intro = if ($HasCopilot) { @(
     '# CURIE c1：Copilot の一次読解の原文照合と FpML 作成'
     ''
     "このフォルダの ``$($Document.local_name)``（原文）、``copilot_extraction.json``（Microsoft 365 Copilot の一次読解）、``instructions.md``（抽出指示）を読んでください。"
-    'page は PDF のページ番号。HTML の資料は全体を1ページ（page=1）とし、location に条項名・見出しを書くこと。'
     'Copilot の値をそのまま採用しないこと。すべての項目を原文で確かめ、値・根拠ページ・原文の引用を自分で確認すること。推測で補わないこと。'
+  ) } else { @(
+    '# CURIE c1：原文からの抽出と FpML 作成（Copilot の一次読解なし）'
+    ''
+    "Copilot の一次読解は使えませんでした（$MissingReason）。あなたが原文から単独で読み取ります。"
+    "このフォルダの ``$($Document.local_name)``（原文）と ``instructions.md``（抽出指示）を読んでください。"
+    'すべての項目を原文から読み取り、値・根拠ページ・原文の引用を記録すること。推測で補わないこと。'
+    'copilot_value はすべて null、review_status は confirmed（原文で確認）／unresolved／not_found のいずれか（corrected は使わない）。'
+  ) }
+  @(
+    $intro
+    'page は PDF のページ番号。HTML の資料は全体を1ページ（page=1）とし、location に条項名・見出しを書くこと。'
     ''
     '## 作るファイル（このフォルダに保存）'
     "1. ``reviewed.json``：instructions.md の抽出JSONの形式に、項目ごとに次を加える。document は document_id=$($Document.document_id)、file=$($Document.file_name)、pages=$($Document.pages)、extracted_by=claude"
@@ -44,17 +54,18 @@ function New-C1ClaudePrompt($Document) {
 }
 
 function Invoke-C1Claude {
-  param([string]$Mode, $Document, [string]$SourcePath, [string]$CopilotExtractionPath, [string]$AgentDir,
-        [string]$InstructionPath, [string]$DemoDir, [string]$ClaudeCmd = 'claude', [int]$TimeoutSec = 1800)
+  param([string]$Mode, $Document, [string]$SourcePath, [string]$CopilotExtractionPath, [string]$CopilotMissingReason,
+        [string]$AgentDir, [string]$InstructionPath, [string]$DemoDir, [string]$ClaudeCmd = 'claude', [int]$TimeoutSec = 1800)
   New-Item -ItemType Directory -Force -Path $AgentDir | Out-Null
-  $log = [ordered]@{ mode = $Mode; started_at = (Get-C1Now) }
+  $hasCopilot = [bool]$CopilotExtractionPath
+  $log = [ordered]@{ mode = $Mode; started_at = (Get-C1Now); with_copilot = $hasCopilot }
   $result = @{ state = 'access_failed'; log = $log }
   try {
-    Write-C1Log 'Claude 依頼文作成' "モード $Mode"
+    Write-C1Log 'Claude 依頼文作成' ("モード $Mode、" + $(if ($hasCopilot) { 'Copilot の一次読解を原文で照合' } else { 'Copilot なし：原文から単独で抽出' }))
     Copy-Item -LiteralPath $SourcePath -Destination (Join-Path $AgentDir $Document.local_name) -Force
-    Copy-Item -LiteralPath $CopilotExtractionPath -Destination (Join-Path $AgentDir 'copilot_extraction.json') -Force
+    if ($hasCopilot) { Copy-Item -LiteralPath $CopilotExtractionPath -Destination (Join-Path $AgentDir 'copilot_extraction.json') -Force }
     Copy-Item -LiteralPath $InstructionPath -Destination (Join-Path $AgentDir 'instructions.md') -Force
-    Write-C1Text (Join-Path $AgentDir 'prompt.md') (New-C1ClaudePrompt $Document)
+    Write-C1Text (Join-Path $AgentDir 'prompt.md') (New-C1ClaudePrompt $Document $hasCopilot $CopilotMissingReason)
     if ($Mode -eq 'api') {
       # PDF を読むための poppler を PATH に加える（Claude Code の Read が pdftoppm を使う）
       if ($Document.kind -eq 'pdf' -and -not (Add-C1PopplerPath)) { throw 'pdftoppm（poppler）がないため、Claude が PDF を読めません' }

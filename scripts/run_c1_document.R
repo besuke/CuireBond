@@ -2,6 +2,7 @@
 # CURIEプロジェクトの最上位フォルダで実行する。
 #
 #   source("scripts/run_c1_document.R", encoding = "UTF-8")      # RStudio：共有URLを貼る（Copilot・Claude とも api）
+#   c1_args <- c("--copilot=demo", "--copilot-file=<回答ファイル>"); source(...)   # RStudio でモードを指定する
 #   Rscript scripts/run_c1_document.R <共有URL> [--copilot=api|manual|demo] [--claude=api|demo]
 #           [--copilot-file=<回答ファイル>] [--claude-demo-dir=<フォルダ>] [--show-fpml]
 #
@@ -13,7 +14,8 @@
 if (!file.exists("CURIE.Rproj")) stop("CURIEプロジェクトの最上位フォルダで実行してください。")
 source("R/load_CURIE.R", encoding = "UTF-8")
 
-args <- commandArgs(trailingOnly = TRUE)
+# RStudio で source() するときは、事前に c1_args <- c("--copilot=demo", ...) と書けば同じ指定ができる
+args <- if (exists("c1_args", envir = globalenv())) get("c1_args", envir = globalenv()) else commandArgs(trailingOnly = TRUE)
 opt <- function(name, default = NULL) {
   hit <- grep(paste0("^--", name, "="), args, value = TRUE)
   if (length(hit)) sub(paste0("^--", name, "="), "", hit[1]) else default
@@ -34,7 +36,8 @@ cat("\nCopilot：", copilot_mode, if (copilot_mode == "api") "（Microsoft 365 C
 case <- workflows_c1_case(shared_url, copilot_mode, claude_mode,
                           copilot_file = opt("copilot-file"), claude_demo_dir = opt("claude-demo-dir"))
 
-cat("\n状態：", case$state, "\n案件フォルダ：", case$case_dir, "\n", sep = "")
+cat("\n読み方：", case$reading %||% case$results$manifest$reading %||% "—", "\n状態：", case$state,
+    "\n案件フォルダ：", case$case_dir, "\n", sep = "")
 if (!is.null(case$results$manifest$stages)) {
   st <- case$results$manifest$stages
   cat("段階：資料 ", st$document, "／読解用データ ", st$reading_data %||% "—", "／Copilot ", st$copilot,
@@ -49,6 +52,9 @@ if (!is.null(case$results$manifest$stages)) {
 }
 if (!is.null(case$error)) cat("エラー：", case$error, "\n")
 if (!is.null(case$excel) && !is.na(case$excel)) cat("確認用Excel：", case$excel, "\n", sep = "")
+if (!is.null(case$fpml) && !is.na(case$fpml)) {
+  cat("FpML：", case$fpml, if (grepl("DRAFT", case$fpml)) "（ドラフト：未検証または条件不足）" else "（最終版）", "\n", sep = "")
+}
 
 if (!is.null(case$validation)) {
   checks <- case$validation$checks
@@ -70,7 +76,7 @@ if (!is.null(terms)) {
   cat("\n■ 取得できなかったもの（", nrow(missing), "項目）\n", sep = "")
   print(dplyr::select(missing, 区分, 項目, 確認状態, 理由), n = Inf, width = Inf)
 
-  fpml <- case$results$files[["fpml"]]
+  fpml <- case$fpml %||% NA_character_
   if (!is.na(fpml)) {
     show <- "--show-fpml" %in% args || (interactive() && toupper(trimws(readline("\nFpMLも表示しますか（Y/n）: "))) %in% c("", "Y", "YES"))
     if (show) { cat("\n■ FpML：", normalizePath(fpml, winslash = "/"), "\n", sep = ""); writeLines(readLines(fpml, encoding = "UTF-8", warn = FALSE)) }

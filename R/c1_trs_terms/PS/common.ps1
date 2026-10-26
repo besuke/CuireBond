@@ -113,7 +113,9 @@ function Invoke-C1Graph([string]$Method, [string]$Path, $Body = $null, [string]$
   $resp = Invoke-RestMethod @params
   if ($Expect -notcontains $status) {
     $detail = try { $resp.error.message } catch { '' }
-    throw "Graph $Method $($uri -replace '\?.*$','') が HTTP $status（$detail）"
+    # 失敗の種類が分かるように（利用上限・認証・権限やライセンス）
+    $label = switch ($status) { 429 { '利用上限（HTTP 429）' } 401 { '認証エラー（HTTP 401）' } 403 { '権限・ライセンス不足（HTTP 403）' } default { "HTTP $status" } }
+    throw "Graph $Method $($uri -replace '\?.*$','') が $label（$detail）"
   }
   return $resp
 }
@@ -243,7 +245,8 @@ function Save-C1PublicSource([string]$Source, [string]$Path) {
   $rec = [ordered]@{ http_status = $null; content_type = $null; final_url = $null }
   if ($Source -match '^https?://') {
     $ua = $env:CURIE_HTTP_USER_AGENT ?? 'CURIE-c1 (TRS terms reader)'
-    $resp = Invoke-WebRequest -Uri $Source -OutFile $Path -PassThru -TimeoutSec 300 -UserAgent $ua -SkipHttpErrorCheck -MaximumRedirection 5
+    # User-Agent は見出しとして渡す（-UserAgent は値の形式を厳しく確かめ、メールアドレスを含む値を受け付けないため）
+    $resp = Invoke-WebRequest -Uri $Source -OutFile $Path -PassThru -TimeoutSec 300 -Headers @{ "User-Agent" = $ua } -SkipHeaderValidation -SkipHttpErrorCheck -MaximumRedirection 5
     $rec.http_status = [int]$resp.StatusCode
     $rec.content_type = ($resp.Headers['Content-Type'] | Select-Object -First 1)
     $rec.final_url = $resp.BaseResponse.RequestMessage.RequestUri.AbsoluteUri
@@ -267,7 +270,7 @@ function Save-C1PublicSource([string]$Source, [string]$Path) {
 function Get-C1ReadingPages([string]$Path, [string]$Kind, [string]$WorkDir, [int]$MinChars = 20) {
   New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
   if ($Kind -eq 'html') {
-    $html = Get-Content -LiteralPath $Path -Raw -Encoding utf8
+    $html = Read-C1HtmlText $Path
     $html = [regex]::Replace($html, '(?is)<(script|style)[^>]*>.*?</\1>', ' ')
     $html = [regex]::Replace($html, '(?i)<\s*(br|/p|/div|/tr|/li|/h[1-6]|/table)\b[^>]*>', "`n")
     $html = [regex]::Replace($html, '(?i)</t[dh]\s*>', "`t")
@@ -298,4 +301,16 @@ function Get-C1ReadingPages([string]$Path, [string]$Kind, [string]$WorkDir, [int
     }
     [ordered]@{ page = $i; method = $method; chars = ($text ?? '').Length; text = ($text ?? '') }
   })
+}
+
+# HTML の文字コード：HTML の宣言（meta charset）→ UTF-8 として正しいか → Windows-1252（古い英文 HTML に多い）の順に決める
+function Read-C1HtmlText([string]$Path) {
+  $bytes = [System.IO.File]::ReadAllBytes($Path)
+  $head = [System.Text.Encoding]::ASCII.GetString($bytes, 0, [Math]::Min(4096, $bytes.Length))
+  $m = [regex]::Match($head, '(?i)charset\s*=\s*["'']?([A-Za-z0-9_-]+)')
+  if ($m.Success) {
+    try { return [System.Text.Encoding]::GetEncoding($m.Groups[1].Value).GetString($bytes) } catch { }
+  }
+  try { return [System.Text.UTF8Encoding]::new($false, $true).GetString($bytes) }   # 不正なバイトがあれば例外
+  catch { return [System.Text.Encoding]::GetEncoding(1252).GetString($bytes) }
 }

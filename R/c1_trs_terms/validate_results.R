@@ -142,8 +142,12 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
   pdf_sha_ok <- if (is.na(results$source_path)) FALSE else identical(pdf_sha256_c1(results$source_path), m$document$sha256)
   ocr_used <- !is.null(results$reading_pages) && any(startsWith(results$reading_pages$method, "ocr"))
 
+  # Copilot が使えず、Claude が単独で読んだ場合（一次読解との照合がない）
+  copilot_missing <- m$copilot_fallback %||% NA_character_
   checks <- dplyr::bind_rows(
     run,
+    .check_row_c1("読解", "Copilot の一次読解と Claude の原文照合", if (is.na(copilot_missing)) TRUE else NA,
+                  if (is.na(copilot_missing)) m$reading %|% "" else paste0("Claude 単独（", copilot_missing, "）"), na_label = "要確認"),
     .check_row_c1("CSV", "CSV と JSON の一致", same, if (!same) "行数または値が異なる" else paste0(nrow(cond), " 行")),
     .check_row_c1("条件", "項目IDが定義にある", !length(unknown), unknown),
     .check_row_c1("条件", "項目・レッグ・番号の重複なし", !anyDuplicated(key), unique(key[duplicated(key)])),
@@ -179,12 +183,17 @@ validate_c1_case <- function(results, xsd_path = Sys.getenv("CURIE_FPML_XSD", ""
       .fpml_vs_csv_c1(fpml, results$conditions)),
     .check_row_c1("出力", "Aladdin 用JSON", NA, "Aladdin の仕様が提示されていないため作らない", na_label = "未作成")
   )
-  failed <- any(checks$結果 %in% c("不合格", "要確認"))
+  failed <- any(checks$結果 %in% c("不合格", "要確認") & checks$区分 != "読解")   # 読み方（Claude単独処理）は別に理由へ入れる
   demo <- c(copilot = "Copilot", claude = "Claude")[names(modes)[modes %in% "demo"]]
-  state <- if (failed || length(unresolved_req)) "要確認" else if (length(demo)) {
+  # 検証済み（FpML を最終版にする）は、R の検証に合格し、必須項目がそろい、公式XSD にも適合した場合だけ
+  xsd_ok <- any(checks$検証 == "公式XSD" & checks$結果 == "合格")
+  reasons <- c(if (!is.na(copilot_missing)) "Claude単独処理", if (failed) "検証に不合格・要確認あり",
+               if (length(unresolved_req)) "必須項目が未確定", if (!xsd_ok) "FpML の公式XSD 検証が未実施または不適合")
+  state <- if (length(reasons)) paste0("要確認（", paste(reasons, collapse = "、"), "）") else if (length(demo)) {
     paste0("デモ（検証は合格。", paste(demo, collapse = "・"), " はモックで、実接続ではない）")
   } else "検証済み"
-  list(state = state, checks = checks, conditions = cond, modes = modes, unresolved_required = unresolved_req)
+  list(state = state, checks = checks, conditions = cond, modes = modes, unresolved_required = unresolved_req,
+       reading = m$reading %|% "", final = identical(state, "検証済み"))
 }
 
 `%|%` <- function(a, b) if (is.null(a) || length(a) == 0L || is.na(a)) b else a

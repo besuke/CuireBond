@@ -51,7 +51,7 @@ $sourceType = if ($isSharePoint) { 'sharepoint' } elseif ($isUrl) { 'public_url'
 $manifest = [ordered]@{
   case_id = $CaseId; created_at = (Get-C1Now); shared_url = $source; pasted_input = $pasted; source_type = $sourceType
   copilot_mode = $CopilotMode; claude_mode = $ClaudeMode; copilot_note = $script:CopilotBetaNote
-  reading = 'Copilot の一次読解を Claude が原文で確かめる（独立した二重読解ではない）'
+  reading = 'Copilot一次読解＋Claude確認'   # Copilot が使えなければ「Claude単独処理（…）」に変える
   stages = [ordered]@{ document = '未実行'; reading_data = '未実行'; copilot = '未実行'; claude = '未実行'; outputs = '未実行' }
 }
 $exit = $script:ExitCodes.ok
@@ -115,20 +115,35 @@ try {
   $manifest.sharepoint_before = $version
 
   # ---- 3. Copilot の一次読解 -------------------------------------------------------------
-  if ($CopilotMode -eq 'api' -and -not $token) {
-    Write-C1Log 'サインイン' ('委任認証（デバイスコード）。権限：' + ($scopes -join ', '))
-    $token = Get-C1GraphToken $scopes
+  # Copilot が使えない（未接続・読解失敗・回答形式不正）ときは止めずに、Claude が原資料を単独で読む。
+  # その旨を記録・表示し、R の検証では「検証済み」にしない
+  $copilotOk = $false
+  $cop = $null
+  $fallback = $null
+  try {
+    if ($CopilotMode -eq 'api' -and -not $token) {
+      Write-C1Log 'サインイン' ('委任認証（デバイスコード）。権限：' + ($scopes -join ', '))
+      $token = Get-C1GraphToken $scopes
+    }
+    $cop = Invoke-C1Copilot -Mode $CopilotMode -Document $document -Version $version -Token $token `
+      -AgentDir (Join-Path $caseDir 'agents\copilot') -InstructionPath $InstructionPath -ManualPath $CopilotManualPath -DemoPath $CopilotDemoPath `
+      -FileReference $isSharePoint -ContextPages @($pagesData)
+    $manifest.copilot = $cop.log
+    $manifest.stages.copilot = @{ ok = '取得済み'; access_failed = '読解失敗'; invalid = '回答形式不正' }[$cop.state]
+    if ($CopilotMode -eq 'demo') { $manifest.stages.copilot += '（デモ：Copilot は呼んでいない）' }
+    if ($cop.state -eq 'ok') { $copilotOk = $true } else { $fallback = $manifest.stages.copilot + '：' + $cop.log.error }
+  } catch [C1Failure] {
+    $manifest.stages.copilot = '未接続'
+    $manifest.copilot = [ordered]@{ mode = $CopilotMode; note = $script:CopilotBetaNote; error = $_.Exception.Message }
+    $fallback = '未接続：' + $_.Exception.Message
   }
-  $cop = Invoke-C1Copilot -Mode $CopilotMode -Document $document -Version $version -Token $token `
-    -AgentDir (Join-Path $caseDir 'agents\copilot') -InstructionPath $InstructionPath -ManualPath $CopilotManualPath -DemoPath $CopilotDemoPath `
-    -FileReference $isSharePoint -ContextPages @($pagesData)
-  $manifest.copilot = $cop.log
-  $manifest.stages.copilot = @{ ok = '取得済み'; access_failed = '読解失敗'; invalid = '回答形式不正' }[$cop.state]
-  if ($CopilotMode -eq 'demo') { $manifest.stages.copilot += '（デモ：Copilot は呼んでいない）' }
-  if ($cop.state -eq 'access_failed') { Stop-C1 'copilot_access' $cop.log.error }
-  if ($cop.state -eq 'invalid') { Stop-C1 'copilot_format' $cop.log.error }
+  if (-not $copilotOk) {
+    $manifest.copilot_fallback = $fallback
+    $manifest.reading = "Claude単独処理（Copilot " + $(if ($manifest.stages.copilot -eq '未接続') { '未実施' } else { '失敗' }) + "：$fallback）"
+    Write-C1Log 'Copilot' "使えないため、Claude が原資料を単独で読みます（$fallback）" 'error'
+  }
   # 読解中に資料が差し替わっていないか（SharePoint は eTag を取り直す）
-  if ($isSharePoint) {
+  if ($isSharePoint -and $token) {
     $after = Get-C1DriveItem $source $token
     $manifest.sharepoint_after = [ordered]@{ e_tag = $after.eTag; size = $after.size; last_modified = $after.lastModifiedDateTime; checked_at = (Get-C1Now) }
     $manifest.sharepoint_unchanged = ($after.eTag -eq $version.e_tag)
@@ -137,7 +152,8 @@ try {
 
   # ---- 4. Claude の原文照合・FpML 作成（取得した同じ原資料を渡す）-----------------------------
   $cla = Invoke-C1Claude -Mode $ClaudeMode -Document $document -SourcePath $original `
-    -CopilotExtractionPath (Join-Path $caseDir 'agents\copilot\copilot_extraction.json') `
+    -CopilotExtractionPath $(if ($copilotOk) { Join-Path $caseDir 'agents\copilot\copilot_extraction.json' } else { $null }) `
+    -CopilotMissingReason $fallback `
     -AgentDir (Join-Path $caseDir 'agents\claude') -InstructionPath $InstructionPath -DemoDir $ClaudeDemoDir
   $manifest.claude = $cla.log
   $manifest.stages.claude = @{ ok = '取得済み'; access_failed = '読解失敗'; invalid = '回答形式不正' }[$cla.state]
@@ -170,7 +186,7 @@ try {
   Write-C1Json (Join-Path $result 'conditions.json') ([ordered]@{ case_id = $CaseId; document = $document; reading = $manifest.reading; conditions = $rows })
   Copy-Item (Join-Path $caseDir 'agents\claude\fpml.xml') (Join-Path $result 'fpml.xml') -Force
   Copy-Item (Join-Path $caseDir 'agents\claude\review_items.md') (Join-Path $result 'review_items.md') -Force
-  Write-C1Json (Join-Path $result 'evidence.json') ([ordered]@{ acquisition = $acquisition; reading_data = $manifest.reading_data; version = $version; copilot_attributions = @($cop.log['attributions'] | Where-Object { $_ }) })
+  Write-C1Json (Join-Path $result 'evidence.json') ([ordered]@{ acquisition = $acquisition; reading_data = $manifest.reading_data; version = $version; copilot_attributions = @(if ($cop) { $cop.log['attributions'] | Where-Object { $_ } }) })
   $manifest.stages.outputs = '保存済み（R の検証待ち）'
 } catch [C1Failure] {
   $exit = $script:ExitCodes[$_.Exception.Kind]
