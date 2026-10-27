@@ -132,6 +132,7 @@ c1_conditions_table <- function(validation) {
     dplyr::select("item_id", "leg_id", "seq", "value", "value_status", "review_status", "review_note")
   jsonlite::write_json(list(
     name = name, status = info$status, original_name = info$original, sha256 = info$sha256, job_id = info$job_id,
+    curie_version = curie_version_info_Curie(),
     created_at = .now_c1(), naming = naming[c("parts", "counterparty", "missing")],
     files = list(pdf = basename(p(".pdf")), tsv = basename(p(".tsv")), fpml = basename(p(".xml")), payload = basename(p("_payload.json"))),
     fpml_status = if (identical(basename(case$fpml), "fpml_final.xml")) "検証済み" else "DRAFT（要確認）",
@@ -302,8 +303,8 @@ c1_inbox_banner <- function(config, extra = NULL, workers = 1L) {
      | |___| |_| |  _ < | || |___
       \____|\___/|_| \_\___|_____|    O T C   D e r i v a t i v e
   ==================================================================
-    Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.
-)")
+    Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.)")
+  note_Curie("    ", curie_version_line_Curie(config$project_root), "\n")   # バージョンは VERSION ファイルから（version.R）
   note_Curie("[*]  CURIE OTC Derivative is monitoring contract PDFs.")
   note_Curie("[*]  Aladdin API payloads are prepared for each case (DRAFT / NOT SENT).")
   cores <- c(physical = parallel::detectCores(logical = FALSE), logical = parallel::detectCores(logical = TRUE))

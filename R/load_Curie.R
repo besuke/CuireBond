@@ -21,7 +21,7 @@ check_packages_Curie()
 load_lagrange_functions_Curie()   # 移植したPart IIの関数（R/z0_utility/lagrange/）
 
 .curie_modules <- list(
-  z0_utility = c("console.R", "isin.R", "parse_utils.R", "import_settings.R", "market_data_import.R",
+  z0_utility = c("console.R", "version.R", "isin.R", "parse_utils.R", "import_settings.R", "market_data_import.R",
                  "interpolation.R", "bond_yield_YEN.R", "attributes.R", "bond_build.R",
                  "curve_build.R", "environment_info.R", "report_format.R", "excel_format.R"),
   a1_offer_sheet = c("convert_offer_sheet.R", "spread_inputs.R", "validate_offer_worksheet.R",

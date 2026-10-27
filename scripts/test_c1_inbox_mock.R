@@ -77,6 +77,8 @@ console <- capture_all({ c1_inbox_banner(config); print(scan1) })
 
 check("Watched folder is the root itself", config$inbox == normalizePath(file.path(base, "box1"), winslash = "/"))
 check("Startup message shows the watched folder as dir:", any(console == paste0("dir:", config$inbox)))
+check("Startup message shows the version from the VERSION file",
+      any(grepl(paste0("^    Version ", readLines("VERSION", n = 1L), "( \\(commit [0-9a-f]+\\))? / R \\d+\\.\\d+"), console)))
 check("Startup message shows workers and CPU cores", any(grepl("^\\[\\*\\]  Workers: 1 \\(sequential\\)\\. CPU cores on this PC: \\d+ physical / \\d+ logical\\.$", console)))
 future::plan(future::multisession, workers = 2)
 check("Worker count follows the future plan when future_walk is used", .workers_c1(purrr::walk) == 1L && .workers_c1(furrr::future_walk) == 2L)
@@ -111,6 +113,7 @@ check("TSV is long format (item, leg, period, value, unit, quote, result)",
       all(c("項目ID", "レッグ", "期間番号", "値", "単位", "原文根拠", "検証結果", "FpMLとの整合") %in% names(tsv)) &&
         tsv$値[tsv$項目ID == "trade.termination_date"] == "2027-10-08")
 v <- jsonlite::read_json(file.path(a_dir, "validation.json"))
+check("validation.json and manifest record the Curie version", identical(v$curie_version$curie, readLines("VERSION", n = 1L)))
 check("validation.json has original name, SHA-256 and DRAFT / NOT SENT", v$original_name == "a_confirmation.pdf" &&
         v$sha256 == pdf_sha256_c1(demo$pdf) && v$payload_status == "DRAFT / NOT SENT")
 payload <- jsonlite::read_json(file.path(a_dir, expected_files[4]))

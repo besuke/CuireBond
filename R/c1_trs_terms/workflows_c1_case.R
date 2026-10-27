@@ -71,7 +71,7 @@ workflows_c1_case <- function(source, claude_mode = .reader_modes_c1,
                               path = if (is.null(path)) NULL else path_display_Curie(path)), auto_unbox = TRUE), "\n",
         file = log_path, append = TRUE, sep = "")
   }
-  manifest <- list(case_id = case_id, created_at = .now_c1(), claude_mode = claude_mode,
+  manifest <- list(case_id = case_id, created_at = .now_c1(), curie_version = curie_version_info_Curie(), claude_mode = claude_mode,
                    stages = list(document = "未実行", reading_data = "未実行", claude = "未実行", outputs = "未実行"))
   failure <- tryCatch({
     # 1. 取得 ---------------------------------------------------------------------------------

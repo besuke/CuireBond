@@ -118,6 +118,7 @@ stop_c1_inbox_watch(config)                         # 停止（処理中の1件�
       \____|\___/|_| \_\___|_____|    O T C   D e r i v a t i v e
   ==================================================================
     Copyright (C) Daiwa Asset Management Co.Ltd. All Rights Reserved.
+    Version 0.1.0 (commit xxxxxxx) / R 4.6.0
 
 [*]  CURIE OTC Derivative is monitoring contract PDFs.
 [*]  Aladdin API payloads are prepared for each case (DRAFT / NOT SENT).
@@ -211,3 +212,6 @@ R を再起動した後は `follow_c1_inbox_watch(config)` で表示を再開で
 - FpML の公式XSD での検証、ISDA 定義の名称と FpML のコード（contractualDefinitions 等）の確認
 - Aladdin への送信（送信先がテスト環境か本番環境かの確認、認証情報、列挙値の一覧、Aladdin のコード対応、スプレッドの単位、想定元本の格納先の提示後）
 - 同じ資料を複数回読ませたときの揺れの測定、正解つき試験資料での正答率の測定
+
+- バージョン：番号はプロジェクト最上位の `VERSION` ファイルだけに書く（`R/z0_utility/version.R` が読む）。起動表示に出し、`manifest.json`・`validation.json` に記録する。
+  開発環境で Git があればコミットの短い ID も添える
