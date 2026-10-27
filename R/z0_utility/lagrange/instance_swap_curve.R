@@ -1,4 +1,4 @@
-# 移植元: LagrangeFinance/R/instance_swap_curve.R（コミット e6614e1。仕様書の基準コミット e955cf4 と同一内容）
+# 移植元: LagrangeFinance/R/instance_swap_curve.R（ブランチ refactor/gaussquant-consolidation のコミット 371d12d。e6614e1 からの差分は GaussQuant の日付・評価日関数への置き換えのみ）
 # 関数名・引数・計算ロジックは変更していない。この行より下は移植元のまま。
 # ------------------------------------------------------------------------
 # Currency-dispatched OIS curves for compute_asset_swap_ISO().
@@ -101,9 +101,7 @@ instance_swap_curve <- function(
   fname <- paste0("Frequency_", payment_frequency, "_get")
   if (length(fname) != 1L || !exists(fname, ns, inherits = FALSE)) stop("Invalid frequency.")
   frequency <- get(fname, ns, inherits = FALSE)()
-  QuantLib::Settings_setEvaluationDate(
-    QuantLib::Settings_instance(), QuantLib::DateParser_parseISO(as.character(marketdate))
-  )
+  GaussQuant::set_eval_date_GQL(marketdate)
   index <- instance_overnight_index(spec$currency)
   calendar <- index$fixingCalendar()
   day_counter <- index$dayCounter()

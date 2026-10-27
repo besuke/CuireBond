@@ -10,9 +10,9 @@
 .curie_lagrange_files <- list(
   "import_data.R"                  = c("readxl", "readr", "dplyr", "purrr", "tibble"),
   "workflows_validate_worksheet.R" = c("collapse", "dplyr", "purrr", "tibble", "readxl", "readr"),
-  "instance_swap_curve.R"          = c("QuantLib", "dplyr", "purrr", "tibble"),
+  "instance_swap_curve.R"          = c("QuantLib", "GaussQuant", "dplyr", "purrr", "tibble"),
   "compute_asset_swap_ISO.R"       = c("QuantLib", "GaussQuant", "dplyr", "purrr", "tibble"),
-  "compute_asset_swap_basis_JPY.R" = c("QuantLib", "dplyr", "purrr", "tibble", "stats")
+  "compute_asset_swap_basis_JPY.R" = c("QuantLib", "GaussQuant", "dplyr", "purrr", "tibble", "stats")
 )
 
 # 読込順は依存の順（workflows_validate_worksheet.R は import_data.R の補助関数を使う）

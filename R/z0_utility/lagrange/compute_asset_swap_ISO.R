@@ -1,4 +1,4 @@
-# 移植元: LagrangeFinance/R/compute_asset_swap_ISO.R（コミット e6614e1。仕様書の基準コミット e955cf4 と同一内容）
+# 移植元: LagrangeFinance/R/compute_asset_swap_ISO.R（ブランチ refactor/gaussquant-consolidation のコミット 371d12d。e6614e1 からの差分は GaussQuant の日付・評価日関数への置き換えのみ）
 # 関数名・引数・計算ロジックは変更していない。この行より下は移植元のまま。
 # ------------------------------------------------------------------------
 .tasw_ql_GQH <- function(name, ...) {
@@ -13,13 +13,6 @@
   get(name, asNamespace("GaussQuant"), inherits = FALSE)(...)
 }
 
-.tasw_date_GQH <- function(x) {
-  if (is.character(x) || inherits(x, "Date")) {
-    return(.tasw_gq_GQH("date_GQL", as.character(x)))
-  }
-  x
-}
-
 .tasw_table_GQH <- function(leg) {
   out <- .tasw_gq_GQH("leg_to_cashflow_tbl_GQL", leg)
   out <- .tasw_gq_GQH("cashflow_standardise_GQL", out)
@@ -31,7 +24,7 @@
 
 .tasw_discount_GQH <- function(curve, dates) {
   purrr::map_dbl(dates, function(d) {
-    value <- as.numeric(curve$discount(.tasw_date_GQH(as.Date(d, origin = "1970-01-01"))))
+    value <- as.numeric(curve$discount(GaussQuant::date_GQL(as.Date(d, origin = "1970-01-01"))))
     if (length(value) != 1L || !is.finite(value) || value <= 0) {
       stop("Invalid discount factor.", call. = FALSE)
     }
@@ -47,7 +40,7 @@ compute_asset_swap_ISO <- function(
   spread_day_counter = NULL
 ) {
   if (is.null(index)) stop("Supply a linked overnight index.")
-  .tasw_gq_GQH("set_eval_date_GQL", .tasw_date_GQH(swap_curve$evaluation_date))
+  .tasw_gq_GQH("set_eval_date_GQL", GaussQuant::date_GQL(swap_curve$evaluation_date))
   start_ql <- .tasw_ql_GQH("Bond_settlementDate", bond)
   start <- as.Date(.tasw_gq_GQH("safe_iso_GQH", start_ql))
   forecast_handle <- swap_curve$curve_handle
@@ -62,7 +55,7 @@ compute_asset_swap_ISO <- function(
   }
   before_dates <- unique(cf$payment_date[cf$payment_date < maturity])
   notionals <- purrr::map_dbl(before_dates, function(d) {
-    as.numeric(.tasw_ql_GQH("Bond_notional", bond, .tasw_date_GQH(as.Date(d, origin = "1970-01-01"))))
+    as.numeric(.tasw_ql_GQH("Bond_notional", bond, GaussQuant::date_GQL(as.Date(d, origin = "1970-01-01"))))
   })
   if (any(!is.finite(notionals)) || any(abs(notionals - nominal) > 1e-8 * nominal)) {
     stop("Amortising bonds are not supported.", call. = FALSE)
@@ -81,7 +74,7 @@ compute_asset_swap_ISO <- function(
   )
   settings <- list(
     withEffectiveDate = start_ql,
-    withTerminationDate = .tasw_date_GQH(maturity),
+    withTerminationDate = GaussQuant::date_GQL(maturity),
     withNominal = nominal,
     withPaymentFrequency = frequency,
     withPaymentLag = as.integer(payment_lag),

@@ -1,4 +1,4 @@
-# 移植元: LagrangeFinance/R/compute_asset_swap_basis_JPY.R（コミット e6614e1。仕様書の基準コミット e955cf4 と同一内容）
+# 移植元: LagrangeFinance/R/compute_asset_swap_basis_JPY.R（ブランチ refactor/gaussquant-consolidation のコミット 371d12d。e6614e1 からの差分は GaussQuant の日付・評価日関数への置き換えのみ）
 # 関数名・引数・計算ロジックは変更していない。この行より下は移植元のまま。
 # ------------------------------------------------------------------------
 # JPY-collateral, constant-notional cross-currency asset swap.
@@ -10,7 +10,7 @@
 
 .xasw_df <- function(curve, dates) {
   purrr::map_dbl(as.character(dates), function(d) {
-    x <- as.numeric(curve$discount(QuantLib::DateParser_parseISO(d)))
+    x <- as.numeric(curve$discount(GaussQuant::date_GQL(d)))
     if (length(x) != 1L || !is.finite(x) || x <= 0) stop("Invalid discount factor.")
     x
   }) 
